@@ -1,0 +1,1999 @@
+<!-- ABOUTME: SUUNTOPO visual topo editor — create climbing topo data for Suunto watch app -->
+<!-- ABOUTME: Draw routes, place signs, export JSON compatible with suuntopo_canvas watch app format -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SUUNTOPO Editor</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #111; color: #eee; font-family: system-ui, sans-serif; overflow: hidden; }
+
+#app { display: flex; height: 100vh; }
+#sidebar { width: 260px; background: #1a1a1a; border-right: 1px solid #333; display: flex; flex-direction: column; }
+#canvas-wrap { flex: 1; position: relative; overflow: hidden; cursor: crosshair; }
+#preview-panel { width: 260px; background: #1a1a1a; border-left: 1px solid #333; display: flex; flex-direction: column; }
+
+#sidebar h2 { padding: 12px 16px; font-size: 14px; color: #fd0; border-bottom: 1px solid #333; }
+.tool-group { padding: 8px; border-bottom: 1px solid #222; }
+.tool-group h3 { font-size: 11px; color: #888; text-transform: uppercase; margin-bottom: 6px; padding: 0 8px; }
+.tool-btn {
+  display: inline-block; padding: 6px 10px; margin: 2px; border-radius: 4px;
+  background: #252525; color: #ccc; font-size: 12px; cursor: pointer; border: 1px solid #333;
+  transition: all 0.15s;
+}
+.tool-btn:hover { background: #333; color: #fff; }
+.tool-btn.active { background: #fd0; color: #111; border-color: #fd0; }
+
+#pitch-info { padding: 12px; flex: 1; overflow-y: auto; }
+#pitch-info h3 { font-size: 11px; color: #888; text-transform: uppercase; margin-bottom: 8px; }
+.pitch-row {
+  padding: 6px; margin: 2px 0; border-radius: 4px; font-size: 12px; cursor: pointer;
+}
+.pitch-row:hover { background: #252525; }
+.pitch-row.selected { background: #333; border-left: 3px solid #fd0; }
+.pitch-row .pitch-header { display: flex; align-items: center; gap: 6px; }
+.pitch-row .idx { color: #fd0; width: 20px; }
+.pitch-row input {
+  background: #222; border: 1px solid #444; color: #eee; padding: 2px 6px;
+  border-radius: 3px; font-size: 11px; width: 50px;
+}
+.pitch-row textarea {
+  display: block; width: 100%; margin-top: 4px; padding: 4px 6px;
+  background: #222; border: 1px solid #444; color: #aaa; border-radius: 3px;
+  font-size: 10px; font-family: system-ui, sans-serif; resize: vertical; min-height: 28px;
+}
+.pitch-row textarea::placeholder { color: #555; }
+
+#topo-meta input {
+  display: block; width: 100%; padding: 3px 6px; margin: 3px 0;
+  background: #222; border: 1px solid #444; color: #eee; border-radius: 3px; font-size: 12px;
+}
+
+#actions { padding: 12px; border-top: 1px solid #333; }
+#actions button {
+  display: block; width: 100%; padding: 8px; margin: 4px 0; border-radius: 4px;
+  background: #252525; color: #ccc; border: 1px solid #333; cursor: pointer; font-size: 13px;
+}
+#actions button:hover { background: #333; color: #fff; }
+#actions button.primary { background: #fd0; color: #111; border-color: #fd0; font-weight: bold; }
+#actions button.danger { border-color: #a33; color: #f66; }
+#actions button.danger:hover { background: #411; }
+
+#editor-canvas { display: block; }
+
+#preview-panel h2 { padding: 12px 16px; font-size: 14px; color: #fd0; border-bottom: 1px solid #333; }
+#preview-canvas { background: #1a1a1a; margin: 12px; border-radius: 50%; }
+
+#status { position: absolute; bottom: 0; left: 0; right: 0; height: 24px;
+  background: #0a0a0a; border-top: 1px solid #333; padding: 0 12px;
+  font-size: 11px; color: #666; line-height: 24px; display: flex; gap: 20px; }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none;
+  align-items: center; justify-content: center; z-index: 100;
+}
+.modal-overlay.show { display: flex; }
+.modal { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; max-width: 600px; width: 90%; }
+.modal h2 { color: #fd0; margin-bottom: 12px; }
+.modal textarea {
+  width: 100%; height: 300px; background: #111; border: 1px solid #333; color: #eee;
+  font-family: monospace; font-size: 12px; padding: 8px; border-radius: 4px;
+}
+.modal button { margin-top: 12px; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+.modal button.primary { background: #fd0; color: #111; }
+.modal button.secondary { background: #333; color: #ccc; margin-left: 8px; }
+
+.selected-highlight { outline: 2px solid #0af; outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="sidebar">
+    <h2>SUUNTOPO Editor</h2>
+
+    <div class="tool-group">
+      <h3>Mode</h3>
+      <span class="tool-btn" data-tool="select">Select</span>
+    </div>
+
+    <div class="tool-group">
+      <h3>Pitch</h3>
+      <span class="tool-btn active" data-tool="route">Route Line</span>
+      <span class="tool-btn" data-tool="anchor">Anchor</span>
+    </div>
+
+    <div class="tool-group">
+      <h3>Topo Features</h3>
+      <span class="tool-btn" data-tool="crack">Crack</span>
+      <span class="tool-btn" data-tool="chimney">Chimney</span>
+      <span class="tool-btn" data-tool="corner">Corner</span>
+      <span class="tool-btn" data-tool="couloir">Couloir</span>
+      <span class="tool-btn" data-tool="overhang">Overhang</span>
+      <span class="tool-btn" data-tool="roof">Roof</span>
+      <span class="tool-btn" data-tool="ledge">Ledge</span>
+      <span class="tool-btn" data-tool="slab">Slab</span>
+      <span class="tool-btn" data-tool="arete">Arete</span>
+      <span class="tool-btn" data-tool="ramp">Ramp</span>
+      <span class="tool-btn" data-tool="bolt">Bolt</span>
+      <span class="tool-btn" data-tool="piton">Piton</span>
+      <span class="tool-btn" data-tool="rappel">Rappel</span>
+      <span class="tool-btn" data-tool="chockstone">Chockstone</span>
+      <span class="tool-btn" data-tool="tree">Tree</span>
+      <span class="tool-btn" data-tool="grass">Grass</span>
+      <span class="tool-btn" data-tool="cross">Scree</span>
+      <span class="tool-btn" data-tool="label">Label</span>
+    </div>
+
+    <div class="tool-group">
+      <h3>Rock Contours</h3>
+      <span class="tool-btn" data-tool="contour">Contour Line</span>
+      <span class="tool-btn" data-tool="contour_poly">Contour Fill</span>
+    </div>
+
+    <div class="tool-group">
+      <h3>Topo Info</h3>
+      <div id="topo-meta">
+        <input id="meta-name" value="New Topo" placeholder="Topo name" oninput="state.name=this.value; renderPreview()">
+        <input id="meta-wall" value="" placeholder="Wall name" oninput="state.wall=this.value">
+        <input id="meta-grade" value="" placeholder="Overall grade" oninput="state.grade=this.value">
+      </div>
+    </div>
+
+    <div id="pitch-info">
+      <h3>Pitches</h3>
+      <div id="pitch-list"></div>
+    </div>
+
+    <div id="actions">
+      <button onclick="loadImage()">Load Background Image</button>
+      <button onclick="undo()">Undo (Ctrl+Z)</button>
+      <button onclick="redo()">Redo (Ctrl+Shift+Z)</button>
+      <button class="primary" onclick="exportJSON()">Export JSON</button>
+      <button onclick="downloadJSON()">Download JSON</button>
+      <button onclick="importJSON()">Import JSON</button>
+      <button onclick="loadJSONFile()">Load JSON File</button>
+      <button class="danger" onclick="clearAll()">Clear All</button>
+    </div>
+  </div>
+
+  <div id="canvas-wrap">
+    <canvas id="editor-canvas"></canvas>
+    <div id="status">
+      <span id="st-tool">Tool: route</span>
+      <span id="st-pos">x: 0 y: 0</span>
+      <span id="st-zoom">Zoom: 100%</span>
+      <span id="st-sel"></span>
+      <span id="st-size">Data: 0B</span>
+      <span id="st-info">Click to add route points. Right-click for anchor point.</span>
+    </div>
+  </div>
+
+  <div id="preview-panel">
+    <h2>Watch Preview</h2>
+    <label id="preview-mode-label" style="display:block; padding:4px 16px; font-size:11px; color:#888;">
+      <input type="checkbox" id="preview-mode-toggle" onchange="togglePreviewMode(this.checked)"> Viewport overlay on canvas
+    </label>
+    <canvas id="preview-canvas" width="240" height="240"></canvas>
+  </div>
+</div>
+
+<div class="modal-overlay" id="export-modal">
+  <div class="modal">
+    <h2>Export Topo JSON</h2>
+    <textarea id="export-text" readonly></textarea>
+    <button class="primary" onclick="copyExport()">Copy to Clipboard</button>
+    <button class="secondary" onclick="downloadJSON()">Download JSON</button>
+    <button class="secondary" onclick="document.getElementById('export-modal').classList.remove('show')">Close</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="import-modal">
+  <div class="modal">
+    <h2>Import Topo JSON</h2>
+    <textarea id="import-text" placeholder="Paste topo JSON here..."></textarea>
+    <button class="primary" onclick="doImport()">Import</button>
+    <button class="secondary" onclick="document.getElementById('import-modal').classList.remove('show')">Close</button>
+  </div>
+</div>
+
+<input type="file" id="img-input" accept="image/*" style="display:none">
+<input type="file" id="json-input" accept=".json" style="display:none">
+
+<script>
+// =====================================================================
+// STATE
+// =====================================================================
+
+// Watch display is 466x466 px. 1 editor unit = 1 watch pixel.
+var WATCH_DIAMETER = 466;
+var WATCH_RADIUS = 233;
+
+var state = {
+  name: 'New Topo',
+  wall: '',
+  grade: '',
+  width: 1000,
+  height: 3000,
+  anchors: [],
+  route: [],
+  features: []
+};
+
+var currentTool = 'route';
+var drawingPoints = [];
+var bgImage = null;
+var bgCorners = null; // [{x,y}, {x,y}, {x,y}, {x,y}] — TL, TR, BR, BL
+var panX = 0, panY = 0, zoom = 1;
+var isPanning = false, panStartX = 0, panStartY = 0;
+var undoStack = [];
+var redoStack = [];
+var selectedAnchor = -1;
+var previewAnchor = 0;
+var isDragging = false;
+var dragTarget = null;
+var dirty = false;
+var previewMode = false;
+var mouseWorldX = 0, mouseWorldY = 0;
+
+// Multi-selection sets (store indices)
+var selectedFeatures = new Set();
+var selectedRoutePoints = new Set();
+
+// Marquee selection state
+var marqueeStart = null;
+var marqueeEnd = null;
+
+// Rect drawing state: mousedown sets start, mousemove shows preview, mouseup commits
+var rectDrawStart = null;
+var rectDrawEnd = null;
+
+// Background image corner dragging state
+var draggingCornerIdx = -1;
+
+var lineTools = ['contour', 'contour_poly'];
+// Arete uses diagonal (x1,y1,x2,y2) so it's handled like a rect tool for interaction but stored differently
+var rectTools = ['chimney', 'crack', 'corner', 'couloir', 'slab', 'roof',
+  'overhang', 'ledge', 'ramp'];
+var diagonalTools = ['arete'];
+var pointTools = ['bolt', 'piton', 'rappel', 'chockstone', 'tree', 'grass', 'cross', 'label'];
+
+function isLineTool(t) { return lineTools.indexOf(t) !== -1; }
+function isRectTool(t) { return rectTools.indexOf(t) !== -1; }
+function isDiagonalTool(t) { return diagonalTools.indexOf(t) !== -1; }
+function isPointTool(t) { return pointTools.indexOf(t) !== -1; }
+function isDiagonalFeature(f) { return f.x1 !== undefined && f.y2 !== undefined; }
+
+function togglePreviewMode(on) {
+  previewMode = on;
+  render();
+}
+
+// Check if a feature uses rect representation (x, y, w, h)
+function isRectFeature(f) { return f.w !== undefined && f.h !== undefined; }
+
+// =====================================================================
+// SELECTION HELPERS
+// =====================================================================
+
+function clearSelection() {
+  selectedFeatures.clear();
+  selectedRoutePoints.clear();
+}
+
+function selectionCount() {
+  return selectedFeatures.size + selectedRoutePoints.size;
+}
+
+function updateSelectionStatus() {
+  var el = document.getElementById('st-sel');
+  var count = selectionCount();
+  if (count > 1) {
+    el.textContent = count + ' selected';
+  } else {
+    el.textContent = '';
+  }
+}
+
+// Get the bounding box of a feature in world coordinates
+function featureBounds(f) {
+  if (isDiagonalFeature(f)) {
+    return {
+      minX: Math.min(f.x1, f.x2), minY: Math.min(f.y1, f.y2),
+      maxX: Math.max(f.x1, f.x2), maxY: Math.max(f.y1, f.y2)
+    };
+  }
+  if (isRectFeature(f)) {
+    return { minX: f.x, minY: f.y, maxX: f.x + f.w, maxY: f.y + f.h };
+  }
+  if (f.points && f.points.length > 0) {
+    var mnx = f.points[0][0], mny = f.points[0][1];
+    var mxx = mnx, mxy = mny;
+    for (var i = 1; i < f.points.length; i++) {
+      if (f.points[i][0] < mnx) mnx = f.points[i][0];
+      if (f.points[i][1] < mny) mny = f.points[i][1];
+      if (f.points[i][0] > mxx) mxx = f.points[i][0];
+      if (f.points[i][1] > mxy) mxy = f.points[i][1];
+    }
+    return { minX: mnx, minY: mny, maxX: mxx, maxY: mxy };
+  }
+  if (f.x !== undefined && f.y !== undefined) {
+    return { minX: f.x - 10, minY: f.y - 20, maxX: f.x + 10, maxY: f.y + 10 };
+  }
+  return null;
+}
+
+// Check if a bounding box overlaps a selection rectangle
+function boundsOverlapRect(b, rx, ry, rw, rh) {
+  if (!b) return false;
+  return b.maxX >= rx && b.minX <= rx + rw && b.maxY >= ry && b.minY <= ry + rh;
+}
+
+// Move a single feature by dx, dy
+function moveFeature(idx, dx, dy) {
+  var f = state.features[idx];
+  if (isDiagonalFeature(f)) {
+    f.x1 += dx; f.y1 += dy; f.x2 += dx; f.y2 += dy;
+  } else if (f.x !== undefined) {
+    f.x += dx; f.y += dy;
+  }
+  if (f.points) {
+    for (var p = 0; p < f.points.length; p++) {
+      f.points[p][0] += dx;
+      f.points[p][1] += dy;
+    }
+  }
+}
+
+// Move a single route point by dx, dy (also moves matching anchor)
+function moveRoutePoint(idx, dx, dy) {
+  var rp = state.route[idx];
+  var ai = findAnchorAt(rp[0], rp[1]);
+  rp[0] += dx;
+  rp[1] += dy;
+  if (ai !== -1) {
+    state.anchors[ai].x += dx;
+    state.anchors[ai].y += dy;
+  }
+}
+
+// =====================================================================
+// CANVAS SETUP
+// =====================================================================
+
+var canvas = document.getElementById('editor-canvas');
+var ctx = canvas.getContext('2d');
+var wrap = document.getElementById('canvas-wrap');
+
+function resizeCanvas() {
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight - 24;
+  render();
+}
+window.addEventListener('resize', resizeCanvas);
+
+function toScreen(x, y) { return [(x * zoom) + panX, (y * zoom) + panY]; }
+function toWorld(sx, sy) { return [(sx - panX) / zoom, (sy - panY) / zoom]; }
+
+// =====================================================================
+// PERSPECTIVE BACKGROUND IMAGE RENDERING
+// =====================================================================
+
+// Bilinear interpolation of a point (u,v) in [0,1]x[0,1] across 4 corners
+// corners: [TL, TR, BR, BL]
+function bilinearInterp(corners, u, v) {
+  var tl = corners[0], tr = corners[1], br = corners[2], bl = corners[3];
+  var x = (1 - u) * (1 - v) * tl.x + u * (1 - v) * tr.x + u * v * br.x + (1 - u) * v * bl.x;
+  var y = (1 - u) * (1 - v) * tl.y + u * (1 - v) * tr.y + u * v * br.y + (1 - u) * v * bl.y;
+  return { x: x, y: y };
+}
+
+// Draw the background image with perspective distortion using grid subdivision
+// Divides the image into NxN cells, each drawn as two triangles
+function drawPerspectiveBgImage(ctx, img, corners, gridN) {
+  if (!img || !corners) return;
+  var iw = img.naturalWidth;
+  var ih = img.naturalHeight;
+
+  for (var row = 0; row < gridN; row++) {
+    for (var col = 0; col < gridN; col++) {
+      var u0 = col / gridN, u1 = (col + 1) / gridN;
+      var v0 = row / gridN, v1 = (row + 1) / gridN;
+
+      // World positions of the 4 cell corners
+      var pTL = bilinearInterp(corners, u0, v0);
+      var pTR = bilinearInterp(corners, u1, v0);
+      var pBR = bilinearInterp(corners, u1, v1);
+      var pBL = bilinearInterp(corners, u0, v1);
+
+      // Source image pixel coordinates
+      var sx0 = u0 * iw, sx1 = u1 * iw;
+      var sy0 = v0 * ih, sy1 = v1 * ih;
+      var sw = sx1 - sx0;
+      var sh = sy1 - sy0;
+
+      // Draw upper-left triangle: TL, TR, BL
+      drawTriangle(ctx, img,
+        pTL.x, pTL.y, pTR.x, pTR.y, pBL.x, pBL.y,
+        sx0, sy0, sx1, sy0, sx0, sy1, sw, sh);
+
+      // Draw lower-right triangle: TR, BR, BL
+      drawTriangle(ctx, img,
+        pTR.x, pTR.y, pBR.x, pBR.y, pBL.x, pBL.y,
+        sx1, sy0, sx1, sy1, sx0, sy1, sw, sh);
+    }
+  }
+}
+
+// Draw a single textured triangle using affine transform + clip
+// (x0,y0), (x1,y1), (x2,y2) are destination world coords
+// (su0,sv0), (su1,sv1), (su2,sv2) are source image pixel coords
+function drawTriangle(ctx, img, x0, y0, x1, y1, x2, y2, su0, sv0, su1, sv1, su2, sv2, cellW, cellH) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.closePath();
+  ctx.clip();
+
+  // We need an affine transform that maps the source triangle to the dest triangle.
+  // Source triangle in image pixels: (su0,sv0), (su1,sv1), (su2,sv2)
+  // Dest triangle in world coords: (x0,y0), (x1,y1), (x2,y2)
+  //
+  // We use drawImage with a setTransform that maps from a unit square source
+  // to the destination. We draw the whole image with a transform.
+  //
+  // The affine transform T maps source coords to dest coords:
+  // T * [su0, sv0, 1]^T = [x0, y0]^T
+  // T * [su1, sv1, 1]^T = [x1, y1]^T
+  // T * [su2, sv2, 1]^T = [x2, y2]^T
+  //
+  // T = [a c e; b d f] where dest = T * [srcX, srcY, 1]^T
+
+  // Solve the 2x3 affine matrix
+  var dsu1 = su1 - su0, dsv1 = sv1 - sv0;
+  var dsu2 = su2 - su0, dsv2 = sv2 - sv0;
+  var det = dsu1 * dsv2 - dsu2 * dsv1;
+
+  if (Math.abs(det) < 0.001) {
+    ctx.restore();
+    return;
+  }
+
+  var dx1 = x1 - x0, dy1 = y1 - y0;
+  var dx2 = x2 - x0, dy2 = y2 - y0;
+
+  var invDet = 1 / det;
+  var a = (dx1 * dsv2 - dx2 * dsv1) * invDet;
+  var c = (dx2 * dsu1 - dx1 * dsu2) * invDet;
+  var e = x0 - a * su0 - c * sv0;
+  var b = (dy1 * dsv2 - dy2 * dsv1) * invDet;
+  var d = (dy2 * dsu1 - dy1 * dsu2) * invDet;
+  var f = y0 - b * su0 - d * sv0;
+
+  ctx.setTransform(a, b, c, d, e, f);
+  ctx.drawImage(img, 0, 0);
+  ctx.restore();
+}
+
+// =====================================================================
+// BACKGROUND CORNER HANDLES
+// =====================================================================
+
+var BG_CORNER_RADIUS = 8; // screen pixels
+var BG_CORNER_HIT_RADIUS = 14; // screen pixels for hit testing
+
+// Hit test background corner handles, returns corner index (0-3) or -1
+function hitTestBgCorner(sx, sy) {
+  if (!bgImage || !bgCorners) return -1;
+  for (var i = 0; i < 4; i++) {
+    var scr = toScreen(bgCorners[i].x, bgCorners[i].y);
+    var dx = sx - scr[0];
+    var dy = sy - scr[1];
+    if (Math.sqrt(dx * dx + dy * dy) < BG_CORNER_HIT_RADIUS) return i;
+  }
+  return -1;
+}
+
+// Draw corner handles on the canvas (in screen space, called after ctx.restore)
+function drawBgCornerHandles(ctx) {
+  if (!bgImage || !bgCorners) return;
+  for (var i = 0; i < 4; i++) {
+    var scr = toScreen(bgCorners[i].x, bgCorners[i].y);
+    ctx.beginPath();
+    ctx.arc(scr[0], scr[1], BG_CORNER_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = '#fd0';
+    ctx.fill();
+    ctx.strokeStyle = '#886600';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Label
+    ctx.fillStyle = '#333';
+    ctx.font = 'bold 10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    var labels = ['TL', 'TR', 'BR', 'BL'];
+    ctx.fillText(labels[i], scr[0], scr[1]);
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  // Draw outline connecting corners
+  ctx.beginPath();
+  var s0 = toScreen(bgCorners[0].x, bgCorners[0].y);
+  ctx.moveTo(s0[0], s0[1]);
+  for (var j = 1; j <= 4; j++) {
+    var sj = toScreen(bgCorners[j % 4].x, bgCorners[j % 4].y);
+    ctx.lineTo(sj[0], sj[1]);
+  }
+  ctx.strokeStyle = 'rgba(255,221,0,0.5)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// =====================================================================
+// RENDERING
+// =====================================================================
+
+function render() {
+  var w = canvas.width, h = canvas.height;
+
+  // Dark area fills the whole canvas first (area outside topo bounds)
+  ctx.fillStyle = '#333';
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.translate(panX, panY);
+  ctx.scale(zoom, zoom);
+
+  // Topo bounds area: light/paper background
+  ctx.fillStyle = '#f5f5f0';
+  ctx.fillRect(0, 0, state.width, state.height);
+
+  if (bgImage && bgCorners) {
+    ctx.globalAlpha = 0.5;
+    drawPerspectiveBgImage(ctx, bgImage, bgCorners, 16);
+    ctx.globalAlpha = 1;
+    // Reset transform after perspective drawing (setTransform may have been called)
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.translate(panX, panY);
+    ctx.scale(zoom, zoom);
+  }
+
+  // Grid — minor lines every WATCH_DIAMETER/4 (~116px), major lines every WATCH_DIAMETER (466px)
+  var gridMinor = WATCH_DIAMETER / 4;
+  var gridMajor = WATCH_DIAMETER;
+  // Minor grid
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 0.5 / zoom;
+  for (var gx = 0; gx <= state.width; gx += gridMinor) {
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, state.height); ctx.stroke();
+  }
+  for (var gy = 0; gy <= state.height; gy += gridMinor) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(state.width, gy); ctx.stroke();
+  }
+  // Major grid (= 1 watch screen width)
+  ctx.strokeStyle = '#bbb';
+  ctx.lineWidth = 1 / zoom;
+  for (var gmx = 0; gmx <= state.width; gmx += gridMajor) {
+    ctx.beginPath(); ctx.moveTo(gmx, 0); ctx.lineTo(gmx, state.height); ctx.stroke();
+  }
+  for (var gmy = 0; gmy <= state.height; gmy += gridMajor) {
+    ctx.beginPath(); ctx.moveTo(0, gmy); ctx.lineTo(state.width, gmy); ctx.stroke();
+  }
+
+  // Features
+  for (var f = 0; f < state.features.length; f++) {
+    drawFeatureEditor(ctx, state.features[f], selectedFeatures.has(f));
+  }
+
+  // Route
+  if (state.route.length > 1) {
+    ctx.strokeStyle = '#e33';
+    ctx.lineWidth = 3 / zoom;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(state.route[0][0], state.route[0][1]);
+    for (var r = 1; r < state.route.length; r++) {
+      ctx.lineTo(state.route[r][0], state.route[r][1]);
+    }
+    ctx.stroke();
+  }
+
+  // Route points
+  for (var rp = 0; rp < state.route.length; rp++) {
+    var isAnc = isAnchorPoint(state.route[rp]);
+    var isSelRp = selectedRoutePoints.has(rp);
+    ctx.beginPath();
+    ctx.arc(state.route[rp][0], state.route[rp][1], isAnc ? 6 / zoom : 3 / zoom, 0, Math.PI * 2);
+    ctx.fillStyle = isSelRp ? '#0af' : (isAnc ? '#fd0' : '#c33');
+    ctx.fill();
+  }
+
+  // Anchors
+  for (var a = 0; a < state.anchors.length; a++) {
+    var anc = state.anchors[a];
+    ctx.beginPath();
+    ctx.arc(anc.x, anc.y, 8 / zoom, 0, Math.PI * 2);
+    ctx.fillStyle = a === selectedAnchor ? '#fd0' : '#333';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(anc.x, anc.y, 3 / zoom, 0, Math.PI * 2);
+    ctx.fillStyle = '#f5f5f0';
+    ctx.fill();
+    ctx.fillStyle = '#c60';
+    ctx.font = (12 / zoom) + 'px monospace';
+    var ancLabel = String(a + 1);
+    if (anc.grade) { ancLabel += ' ' + anc.grade; }
+    if (anc.length) { ancLabel += ' ' + anc.length; }
+    ctx.fillText(ancLabel, anc.x + 10 / zoom, anc.y + 4 / zoom);
+  }
+
+  // Drawing in progress: polyline for line tools
+  if (drawingPoints.length > 0) {
+    ctx.strokeStyle = '#0af';
+    ctx.lineWidth = 2 / zoom;
+    ctx.setLineDash([5 / zoom, 5 / zoom]);
+    ctx.beginPath();
+    ctx.moveTo(drawingPoints[0][0], drawingPoints[0][1]);
+    for (var dp = 1; dp < drawingPoints.length; dp++) {
+      ctx.lineTo(drawingPoints[dp][0], drawingPoints[dp][1]);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (var dpp = 0; dpp < drawingPoints.length; dpp++) {
+      ctx.beginPath();
+      ctx.arc(drawingPoints[dpp][0], drawingPoints[dpp][1], 4 / zoom, 0, Math.PI * 2);
+      ctx.fillStyle = '#0af';
+      ctx.fill();
+    }
+  }
+
+  // Drawing in progress: rect/diagonal preview
+  if (rectDrawStart && rectDrawEnd) {
+    ctx.strokeStyle = '#0af';
+    ctx.lineWidth = 2 / zoom;
+    ctx.setLineDash([5 / zoom, 5 / zoom]);
+    if (isDiagonalTool(currentTool)) {
+      ctx.beginPath();
+      ctx.moveTo(rectDrawStart.x, rectDrawStart.y);
+      ctx.lineTo(rectDrawEnd.x, rectDrawEnd.y);
+      ctx.stroke();
+    } else {
+      var rx = Math.min(rectDrawStart.x, rectDrawEnd.x);
+      var ry = Math.min(rectDrawStart.y, rectDrawEnd.y);
+      var rw = Math.abs(rectDrawEnd.x - rectDrawStart.x);
+      var rh = Math.abs(rectDrawEnd.y - rectDrawStart.y);
+      ctx.strokeRect(rx, ry, rw, rh);
+    }
+    ctx.setLineDash([]);
+  }
+
+  ctx.restore();
+
+  // Background corner handles (drawn in screen space, only in select mode)
+  if (currentTool === 'select' && bgImage && bgCorners) {
+    drawBgCornerHandles(ctx);
+  }
+
+  // Marquee selection rectangle (drawn in screen space)
+  if (marqueeStart && marqueeEnd) {
+    var msx = Math.min(marqueeStart.sx, marqueeEnd.sx);
+    var msy = Math.min(marqueeStart.sy, marqueeEnd.sy);
+    var msw = Math.abs(marqueeEnd.sx - marqueeStart.sx);
+    var msh = Math.abs(marqueeEnd.sy - marqueeStart.sy);
+    ctx.save();
+    ctx.strokeStyle = '#0af';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(msx, msy, msw, msh);
+    ctx.fillStyle = 'rgba(0,170,255,0.08)';
+    ctx.fillRect(msx, msy, msw, msh);
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // Watch viewport overlay — 466 world units diameter circle (1:1 with watch pixels)
+  if (previewMode) {
+    // The watch viewport is WATCH_RADIUS world units radius
+    var watchScreenR = WATCH_RADIUS * zoom;
+    var scr = toScreen(mouseWorldX, mouseWorldY);
+    // Darken everything outside the circle
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.rect(0, 0, canvas.width, canvas.height);
+    ctx.arc(scr[0], scr[1], watchScreenR, 0, Math.PI * 2, true);
+    ctx.fill();
+    // Circle outline
+    ctx.strokeStyle = '#fd0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(scr[0], scr[1], watchScreenR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    // Update preview centered on mouse position
+    renderPreviewAt(mouseWorldX, mouseWorldY);
+  }
+
+  updateSelectionStatus();
+  updateDataSize();
+}
+
+function isAnchorPoint(pt) {
+  for (var a = 0; a < state.anchors.length; a++) {
+    if (Math.abs(state.anchors[a].x - pt[0]) < 2 && Math.abs(state.anchors[a].y - pt[1]) < 2) return true;
+  }
+  return false;
+}
+
+// =====================================================================
+// FEATURE DRAWING (editor) — zoom-corrected sizes
+// =====================================================================
+
+function drawFeatureEditor(ctx, feature, isSelected) {
+  var pts = feature.points;
+  var type = feature.type;
+  var z = 1 / zoom;
+  var S = 1; // base scale for point features in world coords
+
+  // ---- Diagonal features (x1, y1, x2, y2) ----
+  if (isDiagonalFeature(feature)) {
+    ctx.strokeStyle = isSelected ? '#0af' : '#555';
+    ctx.lineWidth = 2.5 * z;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(feature.x1, feature.y1);
+    ctx.lineTo(feature.x2, feature.y2);
+    ctx.stroke();
+    if (isSelected) {
+      ctx.strokeStyle = '#0af';
+      ctx.lineWidth = 1 * z;
+      ctx.setLineDash([3 / zoom, 3 / zoom]);
+      ctx.beginPath(); ctx.arc(feature.x1, feature.y1, 5 / zoom, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(feature.x2, feature.y2, 5 / zoom, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    return;
+  }
+
+  // ---- Rect features (x, y, w, h) ----
+  if (isRectFeature(feature)) {
+    var fx = feature.x, fy = feature.y, fw = feature.w, fh = feature.h;
+    // Determine longer axis: true if width >= height
+    var horizontal = (fw >= fh);
+    var longer = horizontal ? fw : fh;
+    var shorter = horizontal ? fh : fw;
+
+    if (type === 'chimney') {
+      // Two parallel lines along the longer axis, gap = shorter side
+      ctx.strokeStyle = isSelected ? '#0af' : '#555';
+      ctx.lineWidth = 1.5 * z;
+      if (horizontal) {
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + fw, fy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(fx, fy + fh); ctx.lineTo(fx + fw, fy + fh); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx, fy + fh); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(fx + fw, fy); ctx.lineTo(fx + fw, fy + fh); ctx.stroke();
+      }
+
+    } else if (type === 'crack') {
+      // Tick marks perpendicular to the longer axis
+      ctx.strokeStyle = isSelected ? '#0af' : '#555';
+      ctx.lineWidth = 1.5 * z;
+      var spacing = 10;
+      var tickLen = shorter / 2;
+      var steps = Math.max(1, Math.floor(longer / spacing));
+      for (var ci = 0; ci <= steps; ci++) {
+        var t = ci / steps;
+        if (horizontal) {
+          var cx2 = fx + fw * t;
+          var cy2 = fy + fh / 2;
+          ctx.beginPath(); ctx.moveTo(cx2, cy2 - tickLen); ctx.lineTo(cx2, cy2 + tickLen); ctx.stroke();
+        } else {
+          var cx3 = fx + fw / 2;
+          var cy3 = fy + fh * t;
+          ctx.beginPath(); ctx.moveTo(cx3 - tickLen, cy3); ctx.lineTo(cx3 + tickLen, cy3); ctx.stroke();
+        }
+      }
+
+    } else if (type === 'corner') {
+      // Two converging lines from wider end to narrow end
+      ctx.strokeStyle = isSelected ? '#0af' : '#555';
+      ctx.lineWidth = 1.5 * z;
+      if (horizontal) {
+        // Wide at left, converge to right center
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + fw, fy + fh / 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(fx, fy + fh); ctx.lineTo(fx + fw, fy + fh / 2); ctx.stroke();
+      } else {
+        // Wide at top, converge to bottom center
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + fw / 2, fy + fh); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(fx + fw, fy); ctx.lineTo(fx + fw / 2, fy + fh); ctx.stroke();
+      }
+
+    } else if (type === 'couloir') {
+      // Two converging lines (like corner but wider spread)
+      ctx.strokeStyle = isSelected ? '#0af' : '#777';
+      ctx.lineWidth = 1 * z;
+      if (horizontal) {
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + fw, fy + fh * 0.3); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(fx, fy + fh); ctx.lineTo(fx + fw, fy + fh * 0.7); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + fw * 0.3, fy + fh); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(fx + fw, fy); ctx.lineTo(fx + fw * 0.7, fy + fh); ctx.stroke();
+      }
+
+    } else if (type === 'overhang') {
+      // Line along width with triangles on one side
+      ctx.strokeStyle = isSelected ? '#0af' : '#666';
+      ctx.fillStyle = isSelected ? '#0af' : '#666';
+      ctx.lineWidth = 1.5 * z;
+      if (horizontal) {
+        // Main line along top
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + fw, fy); ctx.stroke();
+        // Triangles pointing down
+        var triSpacing = 14;
+        var triCount = Math.max(1, Math.floor(fw / triSpacing));
+        for (var oi = 0; oi <= triCount; oi++) {
+          var ox = fx + fw * (oi / triCount);
+          ctx.beginPath();
+          ctx.moveTo(ox - 4, fy);
+          ctx.lineTo(ox, fy + Math.min(fh, 8));
+          ctx.lineTo(ox + 4, fy);
+          ctx.closePath(); ctx.fill();
+        }
+      } else {
+        // Main line along left
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx, fy + fh); ctx.stroke();
+        // Triangles pointing right
+        var triSpacing2 = 14;
+        var triCount2 = Math.max(1, Math.floor(fh / triSpacing2));
+        for (var oi2 = 0; oi2 <= triCount2; oi2++) {
+          var oy = fy + fh * (oi2 / triCount2);
+          ctx.beginPath();
+          ctx.moveTo(fx, oy - 4);
+          ctx.lineTo(fx + Math.min(fw, 8), oy);
+          ctx.lineTo(fx, oy + 4);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+
+    } else if (type === 'ledge') {
+      // Thick line along width
+      ctx.strokeStyle = isSelected ? '#0af' : '#555';
+      ctx.lineWidth = 3 * z;
+      if (horizontal) {
+        ctx.beginPath(); ctx.moveTo(fx, fy + fh / 2); ctx.lineTo(fx + fw, fy + fh / 2); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.moveTo(fx + fw / 2, fy); ctx.lineTo(fx + fw / 2, fy + fh); ctx.stroke();
+      }
+
+    } else if (type === 'slab') {
+      // Rectangle outline
+      ctx.strokeStyle = isSelected ? '#0af' : '#888';
+      ctx.lineWidth = 1 * z;
+      ctx.strokeRect(fx, fy, fw, fh);
+
+    } else if (type === 'roof') {
+      // Line with hatch marks on one side
+      ctx.strokeStyle = isSelected ? '#0af' : '#666';
+      ctx.lineWidth = 1.5 * z;
+      var hatchSpacing = 5;
+      var hatchLen = 5;
+      if (horizontal) {
+        // Main line along top
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + fw, fy); ctx.stroke();
+        // Hatches down
+        var hSteps = Math.max(1, Math.floor(fw / hatchSpacing));
+        for (var hi = 0; hi <= hSteps; hi++) {
+          var hx = fx + fw * (hi / hSteps);
+          ctx.beginPath(); ctx.moveTo(hx, fy); ctx.lineTo(hx, fy + Math.min(fh, hatchLen)); ctx.stroke();
+        }
+      } else {
+        // Main line along left
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx, fy + fh); ctx.stroke();
+        // Hatches right
+        var hSteps2 = Math.max(1, Math.floor(fh / hatchSpacing));
+        for (var hi2 = 0; hi2 <= hSteps2; hi2++) {
+          var hy = fy + fh * (hi2 / hSteps2);
+          ctx.beginPath(); ctx.moveTo(fx, hy); ctx.lineTo(fx + Math.min(fw, hatchLen), hy); ctx.stroke();
+        }
+      }
+
+    } else if (type === 'ramp') {
+      // Line with hatch marks on one side (diagonal feel)
+      ctx.strokeStyle = isSelected ? '#0af' : '#555';
+      ctx.lineWidth = 1.5 * z;
+      var rSpacing = 8;
+      var rHatch = 6;
+      if (horizontal) {
+        // Diagonal line from bottom-left to top-right
+        ctx.beginPath(); ctx.moveTo(fx, fy + fh); ctx.lineTo(fx + fw, fy); ctx.stroke();
+        // Hatches on the lower side
+        var rSteps = Math.max(1, Math.floor(fw / rSpacing));
+        for (var ri = 0; ri <= rSteps; ri++) {
+          var rt = ri / rSteps;
+          var rpx = fx + fw * rt;
+          var rpy = fy + fh * (1 - rt);
+          // Hatch perpendicular pointing down-right
+          var rdx = fw, rdy = -fh;
+          var rlen = Math.sqrt(rdx * rdx + rdy * rdy);
+          var rnx = rdy / rlen, rny = -rdx / rlen;
+          ctx.beginPath(); ctx.moveTo(rpx, rpy); ctx.lineTo(rpx + rnx * rHatch, rpy + rny * rHatch); ctx.stroke();
+        }
+      } else {
+        // Diagonal line from top-right to bottom-left
+        ctx.beginPath(); ctx.moveTo(fx + fw, fy); ctx.lineTo(fx, fy + fh); ctx.stroke();
+        // Hatches on one side
+        var rSteps2 = Math.max(1, Math.floor(fh / rSpacing));
+        for (var ri2 = 0; ri2 <= rSteps2; ri2++) {
+          var rt2 = ri2 / rSteps2;
+          var rpx2 = fx + fw * (1 - rt2);
+          var rpy2 = fy + fh * rt2;
+          var rdx2 = -fw, rdy2 = fh;
+          var rlen2 = Math.sqrt(rdx2 * rdx2 + rdy2 * rdy2);
+          var rnx2 = rdy2 / rlen2, rny2 = -rdx2 / rlen2;
+          ctx.beginPath(); ctx.moveTo(rpx2, rpy2); ctx.lineTo(rpx2 + rnx2 * rHatch, rpy2 + rny2 * rHatch); ctx.stroke();
+        }
+      }
+    }
+
+    // Selection outline for rect features
+    if (isSelected) {
+      ctx.strokeStyle = '#0af';
+      ctx.lineWidth = 1 * z;
+      ctx.setLineDash([3 / zoom, 3 / zoom]);
+      ctx.strokeRect(fx - 2, fy - 2, fw + 4, fh + 4);
+      ctx.setLineDash([]);
+    }
+    return;
+  }
+
+  // ---- Line features (points[]) ----
+  if (type === 'contour' && pts && pts.length > 1) {
+    ctx.strokeStyle = isSelected ? '#0af' : '#999';
+    ctx.lineWidth = 0.8 * z;
+    drawPolyline(ctx, pts);
+
+  } else if (type === 'contour_poly' && pts && pts.length > 2) {
+    // Filled contour polygon
+    ctx.fillStyle = isSelected ? 'rgba(0,170,255,0.15)' : 'rgba(150,150,140,0.2)';
+    ctx.strokeStyle = isSelected ? '#0af' : '#999';
+    ctx.lineWidth = 0.8 * z;
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (var cp = 1; cp < pts.length; cp++) { ctx.lineTo(pts[cp][0], pts[cp][1]); }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+  // ---- Point features ----
+  } else if (type === 'bolt') {
+    drawX(ctx, feature.x, feature.y, 4 * S, isSelected ? '#0af' : '#333', 1.5 * z);
+  } else if (type === 'piton') {
+    ctx.strokeStyle = isSelected ? '#0af' : '#333';
+    ctx.lineWidth = 1.5 * z;
+    ctx.beginPath();
+    ctx.moveTo(feature.x, feature.y - 5 * S);
+    ctx.lineTo(feature.x, feature.y);
+    ctx.lineTo(feature.x + 5 * S, feature.y);
+    ctx.stroke();
+  } else if (type === 'rappel') {
+    ctx.strokeStyle = isSelected ? '#0af' : '#333';
+    ctx.lineWidth = 1.5 * z;
+    ctx.beginPath(); ctx.arc(feature.x, feature.y, 5 * S, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(feature.x, feature.y + 5 * S); ctx.lineTo(feature.x, feature.y + 12 * S); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(feature.x - 3 * S, feature.y + 9 * S);
+    ctx.lineTo(feature.x, feature.y + 12 * S);
+    ctx.lineTo(feature.x + 3 * S, feature.y + 9 * S);
+    ctx.stroke();
+  } else if (type === 'chockstone') {
+    ctx.strokeStyle = isSelected ? '#0af' : '#666';
+    ctx.lineWidth = 1.5 * z;
+    ctx.beginPath(); ctx.moveTo(feature.x - 8 * S, feature.y - 10 * S); ctx.lineTo(feature.x - 8 * S, feature.y + 10 * S); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(feature.x + 8 * S, feature.y - 10 * S); ctx.lineTo(feature.x + 8 * S, feature.y + 10 * S); ctx.stroke();
+    ctx.beginPath(); ctx.arc(feature.x, feature.y, 4 * S, 0, Math.PI * 2);
+    ctx.fillStyle = isSelected ? '#0af' : '#666'; ctx.fill();
+  } else if (type === 'tree') {
+    var tc = isSelected ? '#0af' : '#486';
+    ctx.strokeStyle = tc;
+    ctx.lineWidth = 1.5 * z;
+    ctx.beginPath(); ctx.moveTo(feature.x, feature.y); ctx.lineTo(feature.x, feature.y - 12 * S); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(feature.x, feature.y - 12 * S); ctx.lineTo(feature.x - 6 * S, feature.y - 20 * S); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(feature.x, feature.y - 12 * S); ctx.lineTo(feature.x + 6 * S, feature.y - 20 * S); ctx.stroke();
+    ctx.fillStyle = isSelected ? '#0af' : '#264';
+    ctx.beginPath(); ctx.arc(feature.x, feature.y - 18 * S, 5 * S, 0, Math.PI * 2); ctx.fill();
+  } else if (type === 'grass') {
+    ctx.strokeStyle = isSelected ? '#0af' : '#486';
+    ctx.lineWidth = 1 * z;
+    // Deterministic grass using feature position as seed
+    for (var gi = -2; gi <= 2; gi++) {
+      var h = 7 + ((feature.x * 7 + feature.y * 13 + gi * 17) % 5);
+      ctx.beginPath();
+      ctx.moveTo(feature.x + gi * 3 * S, feature.y);
+      ctx.lineTo(feature.x + gi * 3.5 * S, feature.y - h * S);
+      ctx.stroke();
+    }
+  } else if (type === 'cross') {
+    drawX(ctx, feature.x, feature.y, 4 * S, isSelected ? '#0af' : '#888', 1 * z);
+  } else if (type === 'label') {
+    ctx.fillStyle = isSelected ? '#0af' : '#444';
+    ctx.font = (14 * S) + 'px monospace';
+    ctx.fillText(feature.text || '?', feature.x, feature.y);
+  }
+
+  // Selection outline for line features
+  if (isSelected && pts && pts.length > 0) {
+    ctx.strokeStyle = '#0af';
+    ctx.lineWidth = 1 * z;
+    ctx.setLineDash([3 / zoom, 3 / zoom]);
+    for (var si = 0; si < pts.length; si++) {
+      ctx.beginPath();
+      ctx.arc(pts[si][0], pts[si][1], 5 / zoom, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+}
+
+// Drawing helpers
+function drawPolyline(ctx, pts) {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.stroke();
+}
+
+function drawX(ctx, x, y, size, color, lw) {
+  ctx.strokeStyle = color; ctx.lineWidth = lw;
+  ctx.beginPath(); ctx.moveTo(x - size, y - size); ctx.lineTo(x + size, y + size); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + size, y - size); ctx.lineTo(x - size, y + size); ctx.stroke();
+}
+
+// =====================================================================
+// DATA SIZE COUNTER
+// =====================================================================
+
+function updateDataSize() {
+  var out = {
+    name: state.name,
+    wall: state.wall || '',
+    grade: state.grade || '',
+    pitches: state.anchors.length,
+    width: state.width,
+    height: state.height,
+    anchors: state.anchors,
+    route: state.route,
+    features: state.features
+  };
+  var jsonStr = JSON.stringify(out);
+  var bytes = jsonStr.length;
+  var label;
+  if (bytes < 1024) {
+    label = 'Data: ' + bytes + 'B';
+  } else {
+    label = 'Data: ' + (bytes / 1024).toFixed(1) + 'KB';
+  }
+  document.getElementById('st-size').textContent = label;
+}
+
+// =====================================================================
+// TOOL SELECTION
+// =====================================================================
+
+document.querySelectorAll('.tool-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    finishDrawing();
+    cancelRectDraw();
+    currentTool = btn.dataset.tool;
+    document.querySelectorAll('.tool-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('st-tool').textContent = 'Tool: ' + currentTool;
+    if (currentTool !== 'select') { clearSelection(); }
+    updateStatusInfo();
+    render();
+  });
+});
+
+function updateStatusInfo() {
+  var el = document.getElementById('st-info');
+  if (currentTool === 'select') el.textContent = 'Click to select. Shift+click to multi-select. Drag empty space for marquee. Ctrl+A select all.';
+  else if (currentTool === 'route') el.textContent = 'Click to add route points. Right-click for anchor. Esc to stop.';
+  else if (currentTool === 'anchor') el.textContent = 'Click on a route point to toggle anchor.';
+  else if (currentTool === 'contour_poly') el.textContent = 'Click to place polygon points. Enter/Dbl-click to close and fill. Esc to cancel.';
+  else if (isLineTool(currentTool)) el.textContent = 'Click to place points. Enter/Dbl-click to finish. Esc to cancel.';
+  else if (isDiagonalTool(currentTool)) el.textContent = 'Click and drag to draw ' + currentTool + ' at any angle.';
+  else if (isRectTool(currentTool)) el.textContent = 'Click and drag to place ' + currentTool + '. Release to set size.';
+  else if (currentTool === 'label') el.textContent = 'Click to place label.';
+  else el.textContent = 'Click to place ' + currentTool + '.';
+}
+
+function cancelRectDraw() {
+  rectDrawStart = null;
+  rectDrawEnd = null;
+}
+
+// =====================================================================
+// HIT TESTING
+// =====================================================================
+
+function hitTestFeature(wx, wy, threshold) {
+  threshold = threshold || 12;
+  for (var i = state.features.length - 1; i >= 0; i--) {
+    var f = state.features[i];
+    // Diagonal features: hit if near either endpoint or the line
+    if (isDiagonalFeature(f)) {
+      if (Math.abs(f.x1 - wx) < threshold && Math.abs(f.y1 - wy) < threshold) return i;
+      if (Math.abs(f.x2 - wx) < threshold && Math.abs(f.y2 - wy) < threshold) return i;
+      // Point-to-line-segment distance
+      var ldx = f.x2 - f.x1, ldy = f.y2 - f.y1;
+      var ll = ldx * ldx + ldy * ldy;
+      if (ll > 0) {
+        var t = Math.max(0, Math.min(1, ((wx - f.x1) * ldx + (wy - f.y1) * ldy) / ll));
+        var px = f.x1 + t * ldx, py = f.y1 + t * ldy;
+        if (Math.sqrt((wx - px) * (wx - px) + (wy - py) * (wy - py)) < threshold) return i;
+      }
+      continue;
+    }
+    // Rect features: hit if click is inside the rect (with threshold margin)
+    if (isRectFeature(f)) {
+      if (wx >= f.x - threshold && wx <= f.x + f.w + threshold &&
+          wy >= f.y - threshold && wy <= f.y + f.h + threshold) {
+        return i;
+      }
+      continue;
+    }
+    // Point features
+    if (f.x !== undefined && f.y !== undefined && !f.points) {
+      if (Math.abs(f.x - wx) < threshold && Math.abs(f.y - wy) < threshold) return i;
+    }
+    // Line features
+    if (f.points) {
+      for (var j = 0; j < f.points.length; j++) {
+        if (Math.abs(f.points[j][0] - wx) < threshold && Math.abs(f.points[j][1] - wy) < threshold) return i;
+      }
+    }
+  }
+  return -1;
+}
+
+function hitTestRoutePoint(wx, wy) {
+  var best = -1, bestD = 12;
+  for (var i = 0; i < state.route.length; i++) {
+    var d = Math.sqrt(Math.pow(state.route[i][0] - wx, 2) + Math.pow(state.route[i][1] - wy, 2));
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+// =====================================================================
+// MOUSE HANDLING
+// =====================================================================
+
+canvas.addEventListener('mousedown', function(e) {
+  if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    isPanning = true;
+    panStartX = e.clientX - panX;
+    panStartY = e.clientY - panY;
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
+  var rect = canvas.getBoundingClientRect();
+  var sx = e.clientX - rect.left;
+  var sy = e.clientY - rect.top;
+  var world = toWorld(sx, sy);
+  var wx = Math.round(world[0]);
+  var wy = Math.round(world[1]);
+
+  if (e.button === 0) {
+    if (currentTool === 'select') {
+      // Check background corner handles first
+      var cornerIdx = hitTestBgCorner(sx, sy);
+      if (cornerIdx !== -1) {
+        draggingCornerIdx = cornerIdx;
+        return;
+      }
+
+      var fi = hitTestFeature(wx, wy);
+      var ri = hitTestRoutePoint(wx, wy);
+
+      if (fi !== -1) {
+        // Clicked a feature
+        if (e.shiftKey) {
+          // Toggle in selection (allow mixed selection with route points)
+          if (selectedFeatures.has(fi)) {
+            selectedFeatures.delete(fi);
+          } else {
+            selectedFeatures.add(fi);
+          }
+        } else {
+          // Replace selection unless already selected (for drag)
+          if (!selectedFeatures.has(fi)) {
+            clearSelection();
+            selectedFeatures.add(fi);
+          }
+        }
+        isDragging = true;
+        dragTarget = { type: 'multi', startX: wx, startY: wy };
+        saveHistory();
+      } else if (ri !== -1) {
+        // Clicked a route point
+        if (e.shiftKey) {
+          // Toggle in selection (allow mixed selection with features)
+          if (selectedRoutePoints.has(ri)) {
+            selectedRoutePoints.delete(ri);
+          } else {
+            selectedRoutePoints.add(ri);
+          }
+        } else {
+          if (!selectedRoutePoints.has(ri)) {
+            clearSelection();
+            selectedRoutePoints.add(ri);
+          }
+        }
+        isDragging = true;
+        dragTarget = { type: 'multi', startX: wx, startY: wy };
+        saveHistory();
+      } else {
+        // Clicked empty space — start marquee selection
+        if (!e.shiftKey) {
+          clearSelection();
+        }
+        marqueeStart = { sx: sx, sy: sy, wx: wx, wy: wy };
+        marqueeEnd = { sx: sx, sy: sy, wx: wx, wy: wy };
+      }
+      render();
+
+    } else if (currentTool === 'route') {
+      saveHistory();
+      state.route.push([wx, wy]);
+      dirty = true;
+      render();
+
+    } else if (currentTool === 'anchor') {
+      var nearest = hitTestRoutePoint(wx, wy);
+      if (nearest !== -1) {
+        var rp = state.route[nearest];
+        var ancIdx = findAnchorAt(rp[0], rp[1]);
+        saveHistory();
+        if (ancIdx !== -1) {
+          state.anchors.splice(ancIdx, 1);
+        } else {
+          state.anchors.push({ x: rp[0], y: rp[1], grade: '', length: '', info: '' });
+        }
+        dirty = true;
+        updatePitchList();
+        render();
+        renderPreview();
+      }
+
+    } else if (isRectTool(currentTool) || isDiagonalTool(currentTool)) {
+      // Start rect/diagonal drawing
+      rectDrawStart = { x: wx, y: wy };
+      rectDrawEnd = { x: wx, y: wy };
+
+    } else if (isPointTool(currentTool)) {
+      saveHistory();
+      var feat = { type: currentTool, x: wx, y: wy };
+      if (currentTool === 'label') {
+        var txt = prompt('Label text:');
+        if (!txt) return;
+        feat.text = txt;
+      }
+      state.features.push(feat);
+      dirty = true;
+      render();
+
+    } else if (isLineTool(currentTool)) {
+      drawingPoints.push([wx, wy]);
+      render();
+    }
+
+  } else if (e.button === 2) {
+    if (currentTool === 'route') {
+      saveHistory();
+      state.route.push([wx, wy]);
+      state.anchors.push({ x: wx, y: wy, grade: '', length: '', info: '' });
+      dirty = true;
+      updatePitchList();
+      render();
+      renderPreview();
+    }
+  }
+});
+
+canvas.addEventListener('mousemove', function(e) {
+  if (isPanning) {
+    panX = e.clientX - panStartX;
+    panY = e.clientY - panStartY;
+    render();
+    return;
+  }
+
+  // Dragging a background corner handle
+  if (draggingCornerIdx !== -1 && bgCorners) {
+    var rect = canvas.getBoundingClientRect();
+    var world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+    bgCorners[draggingCornerIdx].x = Math.round(world[0]);
+    bgCorners[draggingCornerIdx].y = Math.round(world[1]);
+    render();
+    return;
+  }
+
+  if (isDragging && dragTarget) {
+    var rect = canvas.getBoundingClientRect();
+    var world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+    var wx = Math.round(world[0]);
+    var wy = Math.round(world[1]);
+    var dx = wx - dragTarget.startX;
+    var dy = wy - dragTarget.startY;
+    dragTarget.startX = wx;
+    dragTarget.startY = wy;
+
+    if (dragTarget.type === 'multi') {
+      // Move all selected features
+      selectedFeatures.forEach(function(idx) {
+        moveFeature(idx, dx, dy);
+      });
+      // Move all selected route points
+      selectedRoutePoints.forEach(function(idx) {
+        moveRoutePoint(idx, dx, dy);
+      });
+    }
+    dirty = true;
+    render();
+    return;
+  }
+
+  // Marquee drag
+  if (marqueeStart) {
+    var rect2m = canvas.getBoundingClientRect();
+    marqueeEnd = {
+      sx: e.clientX - rect2m.left,
+      sy: e.clientY - rect2m.top,
+      wx: 0, wy: 0
+    };
+    // Convert marquee corners to world coords for hit testing
+    var w1 = toWorld(Math.min(marqueeStart.sx, marqueeEnd.sx), Math.min(marqueeStart.sy, marqueeEnd.sy));
+    var w2 = toWorld(Math.max(marqueeStart.sx, marqueeEnd.sx), Math.max(marqueeStart.sy, marqueeEnd.sy));
+    marqueeEnd.wx = Math.round(w2[0]);
+    marqueeEnd.wy = Math.round(w2[1]);
+    render();
+    return;
+  }
+
+  // Rect preview during drag
+  if (rectDrawStart) {
+    var rect3 = canvas.getBoundingClientRect();
+    var world3 = toWorld(e.clientX - rect3.left, e.clientY - rect3.top);
+    rectDrawEnd = { x: Math.round(world3[0]), y: Math.round(world3[1]) };
+    render();
+    return;
+  }
+
+  var rect2 = canvas.getBoundingClientRect();
+  var world2 = toWorld(e.clientX - rect2.left, e.clientY - rect2.top);
+  mouseWorldX = world2[0];
+  mouseWorldY = world2[1];
+  document.getElementById('st-pos').textContent = 'x: ' + Math.round(world2[0]) + ' y: ' + Math.round(world2[1]);
+  if (previewMode) { render(); }
+});
+
+canvas.addEventListener('mouseup', function(e) {
+  if (isPanning) { isPanning = false; canvas.style.cursor = 'crosshair'; }
+  if (isDragging) { isDragging = false; dragTarget = null; renderPreview(); }
+
+  // Finish background corner drag
+  if (draggingCornerIdx !== -1) {
+    draggingCornerIdx = -1;
+    render();
+    return;
+  }
+
+  // Finish marquee selection
+  if (marqueeStart && marqueeEnd) {
+    var mw1 = toWorld(Math.min(marqueeStart.sx, marqueeEnd.sx), Math.min(marqueeStart.sy, marqueeEnd.sy));
+    var mw2 = toWorld(Math.max(marqueeStart.sx, marqueeEnd.sx), Math.max(marqueeStart.sy, marqueeEnd.sy));
+    var mrx = mw1[0], mry = mw1[1];
+    var mrw = mw2[0] - mw1[0], mrh = mw2[1] - mw1[1];
+
+    // Only do marquee if dragged more than a few pixels
+    if (Math.abs(marqueeEnd.sx - marqueeStart.sx) > 3 || Math.abs(marqueeEnd.sy - marqueeStart.sy) > 3) {
+      // Select features inside marquee
+      for (var fi = 0; fi < state.features.length; fi++) {
+        var fb = featureBounds(state.features[fi]);
+        if (boundsOverlapRect(fb, mrx, mry, mrw, mrh)) {
+          selectedFeatures.add(fi);
+        }
+      }
+      // Select route points inside marquee
+      for (var ri = 0; ri < state.route.length; ri++) {
+        var rpx = state.route[ri][0], rpy = state.route[ri][1];
+        if (rpx >= mrx && rpx <= mrx + mrw && rpy >= mry && rpy <= mry + mrh) {
+          selectedRoutePoints.add(ri);
+        }
+      }
+    }
+    marqueeStart = null;
+    marqueeEnd = null;
+    render();
+    return;
+  }
+
+  // Commit rect/diagonal feature on mouseup
+  if (rectDrawStart && rectDrawEnd) {
+    var dx = Math.abs(rectDrawEnd.x - rectDrawStart.x);
+    var dy = Math.abs(rectDrawEnd.y - rectDrawStart.y);
+    if (dx >= 3 || dy >= 3) {
+      saveHistory();
+      if (isDiagonalTool(currentTool)) {
+        // Diagonal: store start and end points directly
+        state.features.push({
+          type: currentTool,
+          x1: rectDrawStart.x, y1: rectDrawStart.y,
+          x2: rectDrawEnd.x, y2: rectDrawEnd.y
+        });
+      } else {
+        // Rect: normalize to top-left + w/h
+        var rx = Math.min(rectDrawStart.x, rectDrawEnd.x);
+        var ry = Math.min(rectDrawStart.y, rectDrawEnd.y);
+        state.features.push({ type: currentTool, x: rx, y: ry, w: dx, h: dy });
+      }
+      dirty = true;
+    }
+    cancelRectDraw();
+    render();
+  }
+});
+
+canvas.addEventListener('dblclick', function(e) {
+  if (isLineTool(currentTool)) {
+    finishDrawing();
+    return;
+  }
+
+  // Double-click to edit in select mode
+  if (currentTool === 'select') {
+    var rect = canvas.getBoundingClientRect();
+    var world = toWorld(e.clientX - rect.left, e.clientY - rect.top);
+    var wx = Math.round(world[0]);
+    var wy = Math.round(world[1]);
+
+    // Double-click on label → edit text
+    var fi = hitTestFeature(wx, wy);
+    if (fi !== -1 && state.features[fi].type === 'label') {
+      var feat = state.features[fi];
+      var newText = prompt('Edit label text:', feat.text || '');
+      if (newText !== null && newText !== feat.text) {
+        saveHistory();
+        feat.text = newText;
+        dirty = true;
+        render();
+      }
+      return;
+    }
+
+    // Double-click on anchor → focus grade input in pitch list
+    for (var a = 0; a < state.anchors.length; a++) {
+      if (Math.abs(state.anchors[a].x - wx) < 12 && Math.abs(state.anchors[a].y - wy) < 12) {
+        selectedAnchor = a;
+        previewAnchor = a;
+        updatePitchList();
+        render();
+        renderPreview();
+        // Focus the grade input for this anchor
+        var gradeInput = document.querySelector('#pitch-list .pitch-row[data-idx="' + a + '"] input[data-field="grade"]');
+        if (gradeInput) {
+          gradeInput.focus();
+          gradeInput.select();
+        }
+        return;
+      }
+    }
+  }
+});
+
+canvas.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+
+canvas.addEventListener('wheel', function(e) {
+  e.preventDefault();
+  var rect = canvas.getBoundingClientRect();
+  var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  var oldZoom = zoom;
+  zoom *= e.deltaY < 0 ? 1.15 : 0.87;
+  zoom = Math.max(0.1, Math.min(10, zoom));
+  panX = mx - (mx - panX) * (zoom / oldZoom);
+  panY = my - (my - panY) * (zoom / oldZoom);
+  document.getElementById('st-zoom').textContent = 'Zoom: ' + Math.round(zoom * 100) + '%';
+  render();
+});
+
+// =====================================================================
+// KEYBOARD
+// =====================================================================
+
+document.addEventListener('keydown', function(e) {
+  // Don't intercept when typing in inputs
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+  if (e.key === 'Enter') {
+    finishDrawing();
+  } else if (e.key === 'Escape') {
+    drawingPoints = [];
+    cancelRectDraw();
+    clearSelection();
+    render();
+  } else if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+    e.preventDefault();
+    undo();
+  } else if ((e.key === 'z' && (e.ctrlKey || e.metaKey) && e.shiftKey) ||
+             (e.key === 'y' && (e.ctrlKey || e.metaKey))) {
+    e.preventDefault();
+    redo();
+  } else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+    // Ctrl+A: select all features and route points
+    e.preventDefault();
+    if (currentTool !== 'select') { setTool('select'); }
+    selectedFeatures.clear();
+    selectedRoutePoints.clear();
+    for (var fi = 0; fi < state.features.length; fi++) {
+      selectedFeatures.add(fi);
+    }
+    for (var ri = 0; ri < state.route.length; ri++) {
+      selectedRoutePoints.add(ri);
+    }
+    render();
+  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    e.preventDefault();
+    if (drawingPoints.length > 0) {
+      drawingPoints.pop();
+      render();
+    } else if (selectedFeatures.size > 0 || selectedRoutePoints.size > 0) {
+      saveHistory();
+      // Delete selected features (sort descending to preserve indices)
+      var featureIndices = Array.from(selectedFeatures).sort(function(a, b) { return b - a; });
+      for (var di = 0; di < featureIndices.length; di++) {
+        state.features.splice(featureIndices[di], 1);
+      }
+      // Delete selected route points (sort descending) and their anchors
+      var rpIndices = Array.from(selectedRoutePoints).sort(function(a, b) { return b - a; });
+      for (var dri = 0; dri < rpIndices.length; dri++) {
+        var rp = state.route[rpIndices[dri]];
+        var ai = findAnchorAt(rp[0], rp[1]);
+        if (ai !== -1) state.anchors.splice(ai, 1);
+        state.route.splice(rpIndices[dri], 1);
+      }
+      clearSelection();
+      dirty = true;
+      updatePitchList();
+      render();
+      renderPreview();
+    }
+  } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    // Arrow keys nudge selected items
+    if (selectedFeatures.size > 0 || selectedRoutePoints.size > 0) {
+      e.preventDefault();
+      var nudge = e.shiftKey ? 10 : 1;
+      var ndx = 0, ndy = 0;
+      if (e.key === 'ArrowUp') ndy = -nudge;
+      else if (e.key === 'ArrowDown') ndy = nudge;
+      else if (e.key === 'ArrowLeft') ndx = -nudge;
+      else if (e.key === 'ArrowRight') ndx = nudge;
+      saveHistory();
+      selectedFeatures.forEach(function(idx) {
+        moveFeature(idx, ndx, ndy);
+      });
+      selectedRoutePoints.forEach(function(idx) {
+        moveRoutePoint(idx, ndx, ndy);
+      });
+      dirty = true;
+      render();
+    }
+  } else if (e.key === 's' && !e.ctrlKey && !e.metaKey) {
+    setTool('select');
+  } else if (e.key === 'r' && !e.ctrlKey && !e.metaKey) {
+    setTool('route');
+  } else if (e.key === 'a' && !e.ctrlKey && !e.metaKey) {
+    setTool('anchor');
+  }
+});
+
+function setTool(name) {
+  finishDrawing();
+  cancelRectDraw();
+  currentTool = name;
+  document.querySelectorAll('.tool-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.tool === name);
+  });
+  document.getElementById('st-tool').textContent = 'Tool: ' + name;
+  if (name !== 'select') { clearSelection(); }
+  updateStatusInfo();
+  render();
+}
+
+// =====================================================================
+// FINISH DRAWING
+// =====================================================================
+
+function finishDrawing() {
+  var minPts = (currentTool === 'contour_poly') ? 3 : 2;
+  if (drawingPoints.length >= minPts && isLineTool(currentTool)) {
+    saveHistory();
+    state.features.push({ type: currentTool, points: drawingPoints.slice() });
+    dirty = true;
+  }
+  drawingPoints = [];
+  render();
+}
+
+// =====================================================================
+// HELPERS
+// =====================================================================
+
+function findAnchorAt(x, y) {
+  for (var i = 0; i < state.anchors.length; i++) {
+    if (Math.abs(state.anchors[i].x - x) < 3 && Math.abs(state.anchors[i].y - y) < 3) return i;
+  }
+  return -1;
+}
+
+// =====================================================================
+// HISTORY
+// =====================================================================
+
+function saveHistory() {
+  undoStack.push(JSON.stringify(state));
+  if (undoStack.length > 50) undoStack.shift();
+  redoStack = [];
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  redoStack.push(JSON.stringify(state));
+  var prev = JSON.parse(undoStack.pop());
+  restoreState(prev);
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+  undoStack.push(JSON.stringify(state));
+  var next = JSON.parse(redoStack.pop());
+  restoreState(next);
+}
+
+function restoreState(s) {
+  state.anchors = s.anchors;
+  state.route = s.route;
+  state.features = s.features;
+  state.name = s.name;
+  state.wall = s.wall;
+  state.grade = s.grade;
+  clearSelection();
+  updatePitchList();
+  render();
+  renderPreview();
+}
+
+// =====================================================================
+// PITCH LIST
+// =====================================================================
+
+function updatePitchList() {
+  var el = document.getElementById('pitch-list');
+  var html = '';
+  for (var i = 0; i < state.anchors.length; i++) {
+    var a = state.anchors[i];
+    html += '<div class="pitch-row' + (i === selectedAnchor ? ' selected' : '') + '" data-idx="' + i + '">'
+      + '<div class="pitch-header">'
+      + '<span class="idx">' + (i + 1) + '.</span>'
+      + '<input placeholder="grade" value="' + (a.grade || '') + '" data-field="grade" data-idx="' + i + '">'
+      + '<input placeholder="length" value="' + (a.length || '') + '" data-field="length" data-idx="' + i + '">'
+      + '</div>'
+      + '<textarea placeholder="description..." data-field="info" data-idx="' + i + '">' + (a.info || '') + '</textarea>'
+      + '</div>';
+  }
+  el.innerHTML = html;
+
+  el.querySelectorAll('.pitch-row').forEach(function(row) {
+    row.addEventListener('click', function() {
+      selectedAnchor = parseInt(row.dataset.idx);
+      previewAnchor = selectedAnchor;
+      updatePitchList();
+      render();
+      renderPreview();
+    });
+  });
+
+  el.querySelectorAll('input, textarea').forEach(function(inp) {
+    inp.addEventListener('input', function() {
+      var idx = parseInt(inp.dataset.idx);
+      state.anchors[idx][inp.dataset.field] = inp.value;
+      if (inp.dataset.field === 'grade' || inp.dataset.field === 'length') {
+        render();
+      }
+    });
+    inp.addEventListener('click', function(e) { e.stopPropagation(); });
+  });
+}
+
+// =====================================================================
+// PREVIEW — shows route, anchors, AND features
+// =====================================================================
+
+function renderPreviewAt(fx, fy) {
+  doRenderPreview(fx, fy);
+}
+
+function renderPreview() {
+  var focusX = 0, focusY = 0;
+  if (state.anchors.length > 0 && previewAnchor < state.anchors.length) {
+    focusX = state.anchors[previewAnchor].x;
+    focusY = state.anchors[previewAnchor].y;
+  } else if (state.route.length > 0) {
+    focusX = state.route[0][0];
+    focusY = state.route[0][1];
+  }
+  doRenderPreview(focusX, focusY);
+}
+
+function doRenderPreview(focusX, focusY) {
+  var pc = document.getElementById('preview-canvas');
+  var pctx = pc.getContext('2d');
+  var pw = 240, ph = 240;
+  pctx.fillStyle = '#1a1a1a';
+  pctx.fillRect(0, 0, pw, ph);
+
+  if (state.anchors.length === 0 && state.route.length === 0 && state.features.length === 0) return;
+
+  var cx = pw / 2, cy = ph / 2;
+
+  // Fixed zoom: 240 preview px = 466 world units (1:1 with watch)
+  var pz = pw / WATCH_DIAMETER;
+
+  // Render features using the SAME drawFeatureEditor function
+  // Temporarily swap zoom so line widths scale correctly
+  var savedZoom = zoom;
+  zoom = pz;
+  pctx.save();
+  pctx.translate(cx - focusX * pz, cy - focusY * pz);
+  pctx.scale(pz, pz);
+
+  // Features — exact same rendering as editor
+  for (var fi = 0; fi < state.features.length; fi++) {
+    drawFeatureEditor(pctx, state.features[fi], false);
+  }
+
+  // Route
+  if (state.route.length > 1) {
+    pctx.strokeStyle = '#f33';
+    pctx.lineWidth = 3 / pz;
+    pctx.lineCap = 'round';
+    pctx.lineJoin = 'round';
+    pctx.beginPath();
+    pctx.moveTo(state.route[0][0], state.route[0][1]);
+    for (var i = 1; i < state.route.length; i++) {
+      pctx.lineTo(state.route[i][0], state.route[i][1]);
+    }
+    pctx.stroke();
+  }
+
+  // Anchors
+  for (var a = 0; a < state.anchors.length; a++) {
+    var anc = state.anchors[a];
+    var isCur = (a === previewAnchor);
+    pctx.beginPath();
+    pctx.arc(anc.x, anc.y, (isCur ? 6 : 4) / pz, 0, Math.PI * 2);
+    pctx.fillStyle = isCur ? '#fd0' : '#fff';
+    pctx.fill();
+    if (isCur) {
+      pctx.beginPath();
+      pctx.arc(anc.x, anc.y, 2 / pz, 0, Math.PI * 2);
+      pctx.fillStyle = '#1a1a1a';
+      pctx.fill();
+    }
+  }
+
+  pctx.restore();
+  zoom = savedZoom;
+
+  // Vignette mask
+  pctx.fillStyle = '#1a1a1a';
+  pctx.beginPath();
+  pctx.rect(0, 0, pw, ph);
+  pctx.arc(cx, cy, cx, 0, Math.PI * 2, true);
+  pctx.fill();
+
+  // Name
+  pctx.fillStyle = '#888';
+  pctx.font = '10px monospace';
+  var nm = state.name || '';
+  var nmw = pctx.measureText(nm).width;
+  pctx.fillText(nm, (pw - nmw) / 2, 20);
+
+  // HUD
+  if (state.anchors.length > 0 && previewAnchor < state.anchors.length) {
+    var pa = state.anchors[previewAnchor];
+    var hud = String(previewAnchor + 1) + '/' + String(state.anchors.length);
+    if (pa.grade) hud += '  ' + pa.grade;
+    if (pa.length) hud += '  ' + pa.length;
+    pctx.fillStyle = '#fff';
+    pctx.font = '11px monospace';
+    var hw = pctx.measureText(hud).width;
+    pctx.fillText(hud, (pw - hw) / 2, ph - 30);
+  }
+}
+
+// =====================================================================
+// ACTIONS
+// =====================================================================
+
+function loadImage() {
+  document.getElementById('img-input').click();
+}
+
+document.getElementById('img-input').addEventListener('change', function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  var img = new Image();
+  img.onload = function() {
+    bgImage = img;
+    state.width = img.width;
+    state.height = img.height;
+    // Initialize corner handles at the image's natural corners
+    bgCorners = [
+      { x: 0, y: 0 },
+      { x: img.width, y: 0 },
+      { x: img.width, y: img.height },
+      { x: 0, y: img.height }
+    ];
+    zoom = Math.min(canvas.width / img.width, canvas.height / img.height) * 0.8;
+    panX = (canvas.width - img.width * zoom) / 2;
+    panY = (canvas.height - img.height * zoom) / 2;
+    render();
+  };
+  img.src = URL.createObjectURL(file);
+  e.target.value = '';
+});
+
+function clearAll() {
+  if (!confirm('Clear everything?')) return;
+  saveHistory();
+  state.anchors = [];
+  state.route = [];
+  state.features = [];
+  drawingPoints = [];
+  cancelRectDraw();
+  clearSelection();
+  dirty = false;
+  updatePitchList();
+  render();
+  renderPreview();
+}
+
+function buildExportObject() {
+  return {
+    name: state.name,
+    wall: state.wall || '',
+    grade: state.grade || '',
+    pitches: state.anchors.length,
+    width: state.width,
+    height: state.height,
+    anchors: state.anchors.map(function(a) {
+      return { x: a.x, y: a.y, grade: a.grade || '', length: a.length || '', info: a.info || '' };
+    }),
+    route: state.route,
+    features: state.features
+  };
+}
+
+function exportJSON() {
+  var out = buildExportObject();
+  document.getElementById('export-text').value = JSON.stringify(out, null, 2);
+  document.getElementById('export-modal').classList.add('show');
+}
+
+function copyExport() {
+  var text = document.getElementById('export-text').value;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text);
+  } else {
+    var ta = document.getElementById('export-text');
+    ta.select();
+    document.execCommand('copy');
+  }
+}
+
+function downloadJSON() {
+  var out = buildExportObject();
+  var jsonStr = JSON.stringify(out, null, 2);
+  var sanitized = (state.name || 'topo').replace(/[^a-zA-Z0-9_\-]/g, '_');
+  var blob = new Blob([jsonStr], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = sanitized + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function importJSON() {
+  document.getElementById('import-modal').classList.add('show');
+}
+
+function doImport() {
+  try {
+    var data = JSON.parse(document.getElementById('import-text').value);
+    applyImportedData(data);
+    document.getElementById('import-modal').classList.remove('show');
+  } catch(e) {
+    alert('Invalid JSON: ' + e.message);
+  }
+}
+
+function loadJSONFile() {
+  document.getElementById('json-input').click();
+}
+
+document.getElementById('json-input').addEventListener('change', function(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      var data = JSON.parse(ev.target.result);
+      applyImportedData(data);
+    } catch(err) {
+      alert('Invalid JSON file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+function applyImportedData(data) {
+  saveHistory();
+  state.name = data.name || 'Imported';
+  state.wall = data.wall || '';
+  state.grade = data.grade || '';
+  state.width = data.width || 400;
+  state.height = data.height || 1600;
+  state.anchors = data.anchors || [];
+  state.route = data.route || [];
+  state.features = data.features || [];
+  document.getElementById('meta-name').value = state.name;
+  document.getElementById('meta-wall').value = state.wall;
+  document.getElementById('meta-grade').value = state.grade;
+  updatePitchList();
+  render();
+  renderPreview();
+}
+
+// Unsaved changes warning
+window.addEventListener('beforeunload', function(e) {
+  if (dirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// =====================================================================
+// INIT
+// =====================================================================
+
+resizeCanvas();
+updateStatusInfo();
+updatePitchList();
+renderPreview();
+
+panX = canvas.width / 2 - state.width * zoom / 2;
+panY = canvas.height / 2 - state.height * zoom / 2;
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "name": "suuntopo_canvas",
+  "version": "0.3",
+  "author": "O. Vitya",
+  "description": "Climbing topo viewer with topo selector",
+  "type": "feature",
+  "usage": "workout",
+  "modificationTime": 1710432000,
+  "template": [{ "name": "t.html" }],
+  "settings": [
+    { "shownName": "Topo 1 (JSON)", "path": "topo0", "type": "string", "maxLength": 100000 },
+    { "shownName": "Topo 2 (JSON)", "path": "topo1", "type": "string", "maxLength": 100000 },
+    { "shownName": "Topo 3 (JSON)", "path": "topo2", "type": "string", "maxLength": 100000 }
+  ],
+  "out": [
+    { "name": "appMode" },
+    { "name": "anchorIdx" },
+    { "name": "topoIdx" },
+    { "name": "selectorIdx" },
+    { "name": "zoomLvl" }
+  ]
+}

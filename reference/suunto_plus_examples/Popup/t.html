@@ -1,0 +1,13 @@
+<!-- Main view -->
+<uiView>
+  <div id="suuntoplus">
+    <div class="sp-title-bg" style="height:20%;width:100%"></div>
+    <div class="sp-t-m p-hc sp-title-text" style="top:6%">POPUP</div>
+
+    <div class="sp-t-m p-hc p-tc" style="top:50%;width:90%">Press top button for popup</div>
+  </div>
+
+  <userInput>
+    <pushButton name="up" onClick="$.put('/Zapp/{zapp_index}/Event', 1, null, 'int32');" />
+  </userInput>
+</uiView>

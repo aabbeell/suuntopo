@@ -1,0 +1,11 @@
+{
+  "name": "TOPO HW TEST",
+  "version": "0.1",
+  "author": "O. Vitya",
+  "description": "Minimal hardware test",
+  "type": "feature",
+  "usage": "workout",
+  "modificationTime": 1710432000,
+  "template": [{ "name": "t.html" }],
+  "out": [{ "name": "cnt" }]
+}

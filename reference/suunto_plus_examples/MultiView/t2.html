@@ -1,0 +1,19 @@
+<uiView>
+  <div id="suuntoplus">
+    <div class="sp-title-bg" style="width:100%;height:20%"></div>
+    <div class="sp-t-m p-hc sp-title-text" style="top:6%">View 2</div>
+
+    <!-- Add view elements here -->
+
+    <!-- Show hint for pressing lower button -->
+    <div class="btn btn-btm">
+      <img class="cm-bgc icon" src="hint-btn-bottom.png"/>
+    </div>
+
+    <userInput>
+      <!-- Switch view when lower button is pressed -->
+      <pushButton name="down" onClick="$.put('/Zapp/{zapp_index}/Event', 1, null, 'int32');" />
+    </userInput>
+
+  </div>
+</uiView>

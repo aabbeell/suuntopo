@@ -1,0 +1,200 @@
+{
+  "name": "Salathe",
+  "wall": "El Cap",
+  "grade": "V",
+  "pitches": 3,
+  "width": 400,
+  "height": 1600,
+  "anchors": [
+    {
+      "x": 75,
+      "y": 1217,
+      "grade": "IV",
+      "length": "33m",
+      "info": "This is the description of the first pitch"
+    },
+    {
+      "x": 157,
+      "y": 971,
+      "grade": "V",
+      "length": "21m",
+      "info": "This is the description of the second pitch"
+    },
+    {
+      "x": 215,
+      "y": 620,
+      "grade": "II",
+      "length": "41m",
+      "info": "This is the description of the third pitch"
+    }
+  ],
+  "route": [
+    [
+      75,
+      1217
+    ],
+    [
+      177,
+      1086
+    ],
+    [
+      157,
+      971
+    ],
+    [
+      207,
+      865
+    ],
+    [
+      281,
+      768
+    ],
+    [
+      267,
+      648
+    ],
+    [
+      215,
+      620
+    ]
+  ],
+  "features": [
+    {
+      "type": "slab",
+      "x": 82,
+      "y": 1057,
+      "w": 52,
+      "h": 52
+    },
+    {
+      "type": "slab",
+      "x": 218,
+      "y": 933,
+      "w": 94,
+      "h": 135
+    },
+    {
+      "type": "slab",
+      "x": 128,
+      "y": 1099,
+      "w": 159,
+      "h": 135
+    },
+    {
+      "type": "tree",
+      "x": 102,
+      "y": 1196
+    },
+    {
+      "type": "tree",
+      "x": 128,
+      "y": 1215
+    },
+    {
+      "type": "tree",
+      "x": 190,
+      "y": 1214
+    },
+    {
+      "type": "tree",
+      "x": 106,
+      "y": 1121
+    },
+    {
+      "type": "tree",
+      "x": 90,
+      "y": 1152
+    },
+    {
+      "type": "tree",
+      "x": 192,
+      "y": 935
+    },
+    {
+      "type": "tree",
+      "x": 207,
+      "y": 917
+    },
+    {
+      "type": "cross",
+      "x": 113,
+      "y": 985
+    },
+    {
+      "type": "cross",
+      "x": 113,
+      "y": 890
+    },
+    {
+      "type": "cross",
+      "x": 128,
+      "y": 904
+    },
+    {
+      "type": "cross",
+      "x": 128,
+      "y": 912
+    },
+    {
+      "type": "cross",
+      "x": 120,
+      "y": 943
+    },
+    {
+      "type": "cross",
+      "x": 142,
+      "y": 930
+    },
+    {
+      "type": "crack",
+      "x": 251,
+      "y": 723,
+      "w": 9,
+      "h": 120
+    },
+    {
+      "type": "overhang",
+      "x": 188,
+      "y": 621,
+      "w": 115,
+      "h": 9
+    },
+    {
+      "type": "ledge",
+      "x": 107,
+      "y": 781,
+      "w": 128,
+      "h": 6
+    },
+    {
+      "type": "rappel",
+      "x": 177,
+      "y": 807
+    },
+    {
+      "type": "rappel",
+      "x": 262,
+      "y": 602
+    },
+    {
+      "type": "grass",
+      "x": 190,
+      "y": 956
+    },
+    {
+      "type": "grass",
+      "x": 200,
+      "y": 948
+    },
+    {
+      "type": "grass",
+      "x": 170,
+      "y": 952
+    },
+    {
+      "type": "grass",
+      "x": 164,
+      "y": 1077
+    }
+  ]
+}

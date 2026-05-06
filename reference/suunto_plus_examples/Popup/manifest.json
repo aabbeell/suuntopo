@@ -1,0 +1,12 @@
+{
+  "name": "Popup",
+  "version": "1.0",
+  "author": " ",
+  "description": " ",
+  "type": "feature",
+  "usage": "workout",
+  "modificationTime": 1687879064,
+  "in": [],
+  "out": [],
+  "template": [{ "name": "t.html" }, { "name": "p1.html" }, { "name": "p2.html" }]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Graph",
+  "version": "1.0",
+  "author": "Suunto",
+  "description": "Data visualization",
+  "type": "feature",
+  "usage": "workout",
+  "modificationTime": 1681986813,
+  "in": [],
+  "out": [{ "name": "sin" }],
+  "template": [{ "name": "g1.html" }]
+}

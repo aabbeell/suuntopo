@@ -1,0 +1,56 @@
+<uiView
+  onLoad="
+    var subscriptionValue1;
+    var subscriptionValue2;
+    var subscriptionValue3;
+  "
+  onActivate="
+    // Change arrow icon according to value:
+    // v < 0: icon F288, arrow down
+    // v == 0: icon F284, arrow right
+    // v > 0: icon F280, arrow up
+    subscriptionValue1 = $.subscribe('Zapp/{zapp_index}/Output/value1', function(v) {
+      setText('#sp-v1-ico', !v ? '&#xF284;' : (v > 0 ? '&#xF280;' : '&#xF288;'));
+    });
+    subscriptionValue2 = $.subscribe('Zapp/{zapp_index}/Output/value2', function(v) {
+      setText('#sp-v2-ico', !v ? '&#xF284;' : (v > 0 ? '&#xF280;' : '&#xF288;'));
+      // Get CSS color value:
+      // v < 0: red
+      // v == 0: grey
+      // v > 0: green
+      var c = getStyle(!v ? 'css:.cm-mid' : (v > 0 ? 'css:.c-green' : 'css:.c-red'), 'color');
+      // Change CSS text color
+      setStyle('#sp-v2-ico', 'color', c);
+    });
+    subscriptionValue3 = $.subscribe('Zapp/{zapp_index}/Output/value3', function(v) {
+      setText('#sp-v3-ico', !v ? '&#xF284;' : (v > 0 ? '&#xF280;' : '&#xF288;'));
+    });
+  "
+  onDeactivate="
+    $.unsubscribe(subscriptionValue1);
+    $.unsubscribe(subscriptionValue2);
+    $.unsubscribe(subscriptionValue3);
+  ">
+  <div id="suuntoplus">
+    <div class="cm-fg" style="width:100%;height:25%">
+      <div class="sp-t-m p-hc" style="top:calc(60% - 50%e)">
+        ICONS
+      </div>
+    </div>
+
+    <div class="cm-mid sp-vertical-center" style="top:50%;left:calc(20% - 50%e)">
+      <span class="sp-t-m">V1</span>
+      <span id="sp-v1-ico" class="f-ico" style="padding-left:5px">&#xF284;</span>
+    </div>
+
+    <div class="cm-mid sp-vertical-center p-hc" style="top:50%">
+      <span class="sp-t-m">V2</span>
+      <span id="sp-v2-ico" class="f-ico" style="padding-left:5px">&#xF284;</span>
+    </div>
+
+    <div class="cm-mid sp-vertical-center" style="top:50%;left:calc(78% - 50%e)">
+      <span class="sp-t-m">V3</span>
+      <span id="sp-v3-ico" class="f-ico" style="padding-left:5px">&#xF284;</span>
+    </div>
+  </div>
+</uiView>

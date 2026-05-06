@@ -1,0 +1,45 @@
+<uiView>
+  <div id="suuntoplus">
+
+    <!-- App title -->
+    <div class="cm-fg" style="width:100%;height:25%;">
+      <div class="sp-t-s p-hc" style="top:calc(60% - 50%e);">MULTI SENSOR</div>
+    </div>
+
+    <!-- Vertical separator -->
+    <div class="cm-fg p-hc" style="top:34%;width:2px;height:41%;opacity:0.4;"></div>
+
+    <!-- Top left: Value from sensor 1 -->
+    <div style="top:calc(42% - 50%e);left:calc(26% - 50%e);">
+      <span class="sp-t-s" style="padding:2px 3px 0 0;">Value 1</span>
+    </div>
+    <div style="top:calc(58% - 50%e);left:calc(26% - 50%e);">
+      <span class="sp-d-s f-num">
+        <eval input="Zapp/{zapp_index}/Output/value1" outputFormat="Count_Fourdigits" default="--" />
+      </span>
+      <span optional class="postfix-m sp-t-s">
+        <postfix />
+      </span>
+    </div>
+
+    <!-- Top right: Value from sensor 2 -->
+    <div style="top:calc(42% - 50%e);left:calc(74% - 50%e);">
+      <span class="sp-t-s" style="padding:2px 3px 0 0;">Value 2</span>
+    </div>
+    <div style="top:calc(58% - 50%e);left:calc(74% - 50%e);">
+      <span class="sp-d-s f-num">
+        <eval input="Zapp/{zapp_index}/Output/value2" outputFormat="Count_Fourdigits" default="--" />
+      </span>
+      <span optional class="postfix-m sp-t-s">
+        <postfix />
+      </span>
+    </div>
+
+    <!-- Bottom middle: Workout duration -->
+    <div class="sp-d-m f-num p-hc" style="top:calc(85% - 50%e);">
+      <eval input="/Activity/Move/-1/Duration/Current" outputFormat="Duration_Training" default="--" />
+    </div>
+
+  </div>
+
+</uiView>

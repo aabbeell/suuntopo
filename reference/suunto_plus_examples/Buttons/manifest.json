@@ -1,0 +1,11 @@
+{
+  "name": "Buttons",
+  "version": "1.0",
+  "author": "Suunto",
+  "description": "Button handling",
+  "type": "feature",
+  "usage": "workout",
+  "modificationTime": 1654707000,
+  "template": [{ "name": "t.html" }],
+  "out": [{ "name": "topCount" }, { "name": "bottomCount" }]
+}

@@ -1,0 +1,905 @@
+<!-- SUUNTOPO v2 — topo selector + canvas topo viewer + info panel -->
+<!-- appMode: 0=selector, 1=topo map, 2=info. All drawn on one canvas. -->
+
+<uiView onLoad="
+
+  // ===================================================================
+  // TOPO DATABASE — hardcoded + synced from data.json via localStorage
+  // ===================================================================
+
+  var topos = [
+    {
+      name: 'Salathe',
+      wall: 'El Cap',
+      grade: 'V',
+      pitches: 3,
+      width: 400,
+      height: 1600,
+      anchors: [
+        { x: 75, y: 1217, grade: 'IV', length: '33m', info: 'First pitch description' },
+        { x: 157, y: 971, grade: 'V', length: '21m', info: 'Second pitch description' },
+        { x: 215, y: 620, grade: 'II', length: '41m', info: 'Third pitch description' }
+      ],
+      route: [[75,1217],[177,1086],[157,971],[207,865],[281,768],[267,648],[215,620]],
+      features: [
+        { type: 'slab', x: 82, y: 1057, w: 52, h: 52 },
+        { type: 'slab', x: 218, y: 933, w: 94, h: 135 },
+        { type: 'tree', x: 102, y: 1196 },
+        { type: 'tree', x: 128, y: 1215 },
+        { type: 'cross', x: 113, y: 985 },
+        { type: 'cross', x: 128, y: 904 },
+        { type: 'crack', x: 251, y: 723, w: 9, h: 120 },
+        { type: 'overhang', x: 188, y: 621, w: 115, h: 9 },
+        { type: 'ledge', x: 107, y: 781, w: 128, h: 6 },
+        { type: 'rappel', x: 177, y: 807 }
+      ]
+    }
+  ];
+
+  // Load synced topos from data.json (via localStorage)
+  // Settings sync stores as strings (getItem), direct data.json may store objects (getObject)
+  // Try both approaches: string → JSON.parse, then object
+  var parseTopo = function(key) {
+    var str, obj;
+    try {
+      str = localStorage.getItem(key);
+      if (str && str.length > 2 && str.charAt(0) === '{') {
+        obj = JSON.parse(str);
+        if (obj && obj.name && obj.anchors && obj.route) { return obj; }
+      }
+    } catch(e) { /* JSON.parse failed or not available */ }
+    try {
+      obj = localStorage.getObject(key);
+      if (obj && obj.name && obj.anchors && obj.route) { return obj; }
+    } catch(e) { /* getObject failed */ }
+    return null;
+  };
+
+  var MAX_SYNCED = 3;
+  var si;
+  for (si = 0; si < MAX_SYNCED; si++) {
+    try {
+      var synced = parseTopo('topo' + si);
+      if (synced) { topos.push(synced); }
+    } catch(e) { /* skip */ }
+  }
+
+  var TOPO_COUNT = topos.length;
+
+  // ===================================================================
+  // STATE
+  // ===================================================================
+
+  var mode = 0;
+  var selIdx = 0;
+  var currentTopo = 0;
+  var currentWP = 0;
+  var currentPitch = 0;
+  var ZOOM = 1.2;
+
+  // Update currentPitch based on current waypoint position
+  var updatePitch = function() {
+    var topo = topos[currentTopo];
+    if (!topo) { return; }
+    currentPitch = 0;
+    for (var pi = 0; pi < topo.anchors.length; pi++) {
+      var ai = findRouteIdx(topo, topo.anchors[pi].x, topo.anchors[pi].y);
+      if (ai <= currentWP) { currentPitch = pi; }
+    }
+  };
+
+  // ===================================================================
+  // COLORS
+  // ===================================================================
+
+  var C_BG = '#1A1A1A';
+  var C_ROUTE = '#FF3333';
+  var C_ANCHOR = '#FFFFFF';
+  var C_CUR = '#FFDD00';
+  var C_TEXT = '#FFFFFF';
+  var C_DIM = '#AAAAAA';
+  var C_DARK = '#555555';
+  var C_MID = '#777777';
+  var C_LIGHT = '#888888';
+
+  // Find closest route point index to a given coordinate
+  var findRouteIdx = function(topo, ax, ay) {
+    var best = 0;
+    var bestD = 999999;
+    for (var ri = 0; ri < topo.route.length; ri++) {
+      var rdx = topo.route[ri][0] - ax;
+      var rdy = topo.route[ri][1] - ay;
+      var d = rdx * rdx + rdy * rdy;
+      if (d < bestD) { bestD = d; best = ri; }
+    }
+    return best;
+  };
+
+  // Grade coloring — green (easy) → white → yellow → red (hard)
+  var gradeColor = function(grade) {
+    if (!grade) { return C_DIM; }
+    var g = grade.replace('.', '').replace('+', '').replace('-', '');
+    if (g === 'I' || g === 'I-II' || g === 'II') { return '#55CC55'; }
+    if (g === 'III' || g === 'III+') { return C_TEXT; }
+    if (g === 'IV' || g === 'IV+') { return C_CUR; }
+    return '#FF5555';
+  };
+
+  // ===================================================================
+  // COORDINATE TRANSFORM
+  // ===================================================================
+
+  var _fx = 0; var _fy = 0; var _z = 1; var _cx = 233; var _cy = 233;
+  var sx = function(x) { return (x - _fx) * _z + _cx; };
+  var sy = function(y) { return (y - _fy) * _z + _cy; };
+  var ss = function(v) { return v * _z; };
+
+  // ===================================================================
+  // DRAW DISPATCHER
+  // ===================================================================
+
+  var drawScreen = function(ctx) {
+    if (mode === 0) { drawSelector(ctx); }
+    else if (mode === 2) { drawInfo(ctx); }
+    else { drawMap(ctx); }
+  };
+
+  // ===================================================================
+  // SELECTOR VIEW
+  // ===================================================================
+
+  var drawSelector = function(ctx) {
+    var w = ctx.width || 466;
+    var h = ctx.height || 466;
+    ctx.fillStyle = C_BG;
+    ctx.fillRect(0, 0, w, h);
+
+    // Title
+    ctx.fillStyle = C_CUR;
+    ctx.font = '32px monospace';
+    var title = 'SUUNTOPO';
+    var tw = ctx.measureText(title).width;
+    ctx.fillText(title, (w - tw) / 2, 90);
+
+    // Divider
+    ctx.strokeStyle = '#333333';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(80, 110);
+    ctx.lineTo(w - 80, 110);
+    ctx.stroke();
+
+    // Topo list
+    var itemH = 60;
+    var startY = 155;
+    var i;
+    for (i = 0; i < TOPO_COUNT; i++) {
+      var t = topos[i];
+      var y = startY + i * itemH;
+      var isSel = (i === selIdx);
+
+      // Selection arrow
+      if (isSel) {
+        ctx.fillStyle = C_CUR;
+        ctx.font = '24px monospace';
+        ctx.fillText('>', 70, y);
+      }
+
+      // Topo name
+      ctx.fillStyle = isSel ? C_CUR : C_TEXT;
+      ctx.font = '22px monospace';
+      ctx.fillText(t.name, 95, y);
+
+      // Topo details — grade colored
+      ctx.fillStyle = isSel ? C_CUR : gradeColor(t.grade);
+      ctx.font = '16px monospace';
+      var detail = t.grade + '  ' + String(t.pitches) + ' pitches';
+      ctx.fillText(detail, 95, y + 22);
+    }
+
+    // Hint
+    ctx.fillStyle = C_DIM;
+    ctx.font = '16px monospace';
+    var hint = 'CROWN = select';
+    var hw = ctx.measureText(hint).width;
+    ctx.fillText(hint, (w - hw) / 2, h - 55);
+
+    drawVignette(ctx, w, h);
+  };
+
+  // ===================================================================
+  // MAP VIEW
+  // ===================================================================
+
+  var drawMap = function(ctx) {
+    var w = ctx.width || 466;
+    var h = ctx.height || 466;
+    _cx = w / 2;
+    _cy = h / 2;
+
+    ctx.fillStyle = C_BG;
+    ctx.fillRect(0, 0, w, h);
+
+    var topo = topos[currentTopo];
+    // Focus on current route waypoint (not just anchor)
+    var wpIdx = currentWP;
+    if (wpIdx >= topo.route.length) { wpIdx = topo.route.length - 1; }
+    if (wpIdx < 0) { wpIdx = 0; }
+    _fx = topo.route[wpIdx][0];
+    _fy = topo.route[wpIdx][1];
+    _z = ZOOM;
+    var curPitch = currentPitch;
+    var anchor = topo.anchors[curPitch];
+
+    var i;
+    for (i = 0; i < topo.features.length; i++) {
+      try { drawFeature(ctx, topo.features[i]); } catch(e) { /* skip broken feature */ }
+    }
+
+    if (topo.route.length > 1) {
+      ctx.strokeStyle = C_ROUTE;
+      ctx.lineWidth = ss(4);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(sx(topo.route[0][0]), sy(topo.route[0][1]));
+      for (i = 1; i < topo.route.length; i++) {
+        ctx.lineTo(sx(topo.route[i][0]), sy(topo.route[i][1]));
+      }
+      ctx.stroke();
+    }
+
+    for (i = 0; i < topo.anchors.length; i++) {
+      var a = topo.anchors[i];
+      var isCur = (i === curPitch);
+      var gc = gradeColor(a.grade);
+      var r = isCur ? ss(13) : ss(8);
+      ctx.beginPath();
+      ctx.arc(sx(a.x), sy(a.y), r, 0, Math.PI * 2);
+      ctx.fillStyle = isCur ? C_CUR : gc;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(sx(a.x), sy(a.y), r * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = isCur ? '#AA8800' : C_BG;
+      ctx.fill();
+      if (a.grade) {
+        ctx.fillStyle = isCur ? C_CUR : gc;
+        ctx.font = Math.round(ss(20)) + 'px monospace';
+        ctx.fillText(a.grade, sx(a.x) + r + ss(6), sy(a.y) + ss(10));
+      }
+    }
+
+    drawVignette(ctx, w, h);
+
+    // --- HUD layer (drawn after vignette so it's always visible) ---
+
+    // Topo name — top center, small and dim
+    ctx.fillStyle = C_DIM;
+    ctx.font = '12px monospace';
+    var nameW = ctx.measureText(topo.name).width;
+    ctx.fillText(topo.name, (w - nameW) / 2, 28);
+
+    // Pitch info — bottom center, grade-colored
+    var gc2 = gradeColor(anchor.grade);
+    var pitchLine = String(curPitch + 1) + '/' + String(topo.anchors.length);
+    if (anchor.grade) { pitchLine = pitchLine + '  ' + anchor.grade; }
+    if (anchor.length) { pitchLine = pitchLine + '  ' + anchor.length; }
+    ctx.fillStyle = gc2;
+    ctx.font = '14px monospace';
+    var pitchW = ctx.measureText(pitchLine).width;
+    ctx.fillText(pitchLine, (w - pitchW) / 2, h - 28);
+
+    // Progress dots — arc centered at 3 o'clock, growing up and down
+    var dotR = 5;
+    var dotCount = topo.anchors.length;
+    var arcCx = w / 2;
+    var arcCy = h / 2;
+    var arcR = (w / 2) - 30;
+    var dotArcSpan = 14 * Math.PI / 180;
+    var totalArc = (dotCount - 1) * dotArcSpan;
+    var arcMid = 0;
+    var arcStart = arcMid + totalArc / 2;
+    var arcEnd = arcMid - totalArc / 2;
+    for (i = 0; i < dotCount; i++) {
+      var dotT = dotCount > 1 ? i / (dotCount - 1) : 0.5;
+      var dotAngle = arcStart + (arcEnd - arcStart) * dotT;
+      var dotPx = arcCx + Math.cos(dotAngle) * arcR;
+      var dotPy = arcCy + Math.sin(dotAngle) * arcR;
+      ctx.beginPath();
+      ctx.arc(dotPx, dotPy, dotR, 0, Math.PI * 2);
+      if (i === curPitch) {
+        ctx.fillStyle = C_CUR;
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = C_DIM;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+    }
+  };
+
+  // ===================================================================
+  // INFO VIEW
+  // ===================================================================
+
+  var drawInfo = function(ctx) {
+    var w = ctx.width || 466;
+    var h = ctx.height || 466;
+    ctx.fillStyle = C_BG;
+    ctx.fillRect(0, 0, w, h);
+
+    var topo = topos[currentTopo];
+    var anchor = topo.anchors[currentPitch];
+    var padX = 60;
+    var contentW = w - padX * 2;
+    var yPos = 80;
+
+    // Title — grade colored
+    var gc = gradeColor(anchor.grade);
+    ctx.fillStyle = gc;
+    ctx.font = '40px monospace';
+    var title = String(currentPitch + 1) + '.';
+    if (anchor.grade) { title = title + '  ' + anchor.grade; }
+    var titleW = ctx.measureText(title).width;
+    ctx.fillText(title, (w - titleW) / 2, yPos);
+    yPos = yPos + 32;
+
+    // Divider
+    ctx.strokeStyle = '#333333';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padX, yPos);
+    ctx.lineTo(w - padX, yPos);
+    ctx.stroke();
+    yPos = yPos + 24;
+
+    // Length
+    if (anchor.length) {
+      ctx.fillStyle = C_TEXT;
+      ctx.font = '22px monospace';
+      var lenW = ctx.measureText(anchor.length).width;
+      ctx.fillText(anchor.length, (w - lenW) / 2, yPos);
+      yPos = yPos + 32;
+    }
+
+    // Description
+    if (anchor.info) {
+      ctx.fillStyle = C_DIM;
+      ctx.font = '22px monospace';
+      var lines = wrapText(ctx, anchor.info, contentW);
+      var lineH = 28;
+      for (var i = 0; i < lines.length; i++) {
+        var lineW = ctx.measureText(lines[i]).width;
+        ctx.fillText(lines[i], (w - lineW) / 2, yPos);
+        yPos = yPos + lineH;
+        if (yPos > h - 80) { break; }
+      }
+    }
+
+    // Position
+    ctx.fillStyle = C_DIM;
+    ctx.font = '18px monospace';
+    var posText = topo.name + '  ' + String(currentPitch + 1) + '/' + String(topo.anchors.length);
+    var posW = ctx.measureText(posText).width;
+    ctx.fillText(posText, (w - posW) / 2, h - 70);
+
+    // Nav hint
+    ctx.fillStyle = C_CUR;
+    ctx.font = '26px monospace';
+    var hint = '^  v';
+    var hintW = ctx.measureText(hint).width;
+    ctx.fillText(hint, (w - hintW) / 2, h - 38);
+
+    drawVignette(ctx, w, h);
+  };
+
+  // ===================================================================
+  // VIGNETTE — round display mask
+  // ===================================================================
+
+  var drawVignette = function(ctx, w, h) {
+    var cx = w / 2;
+    var cy = h / 2;
+    var maxR = cx;
+    ctx.fillStyle = C_BG;
+
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(cx, 0);
+    ctx.arc(cx, cy, maxR, -Math.PI / 2, -Math.PI, true);
+    ctx.lineTo(0, 0);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(cx, 0);
+    ctx.lineTo(w, 0);
+    ctx.lineTo(w, cy);
+    ctx.arc(cx, cy, maxR, 0, -Math.PI / 2, true);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(w, cy);
+    ctx.lineTo(w, h);
+    ctx.lineTo(cx, h);
+    ctx.arc(cx, cy, maxR, Math.PI / 2, 0, true);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(cx, h);
+    ctx.lineTo(0, h);
+    ctx.lineTo(0, cy);
+    ctx.arc(cx, cy, maxR, Math.PI, Math.PI / 2, true);
+    ctx.fill();
+  };
+
+  // ===================================================================
+  // FEATURE RENDERER
+  // ===================================================================
+
+  // Helper: draw along a line segment at regular intervals
+  var alongLine = function(pts, spacing, callback) {
+    var i, dx, dy, len, steps, s, t, px, py, nx, ny;
+    for (i = 0; i < pts.length - 1; i++) {
+      dx = pts[i + 1][0] - pts[i][0];
+      dy = pts[i + 1][1] - pts[i][1];
+      len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1) { continue; }
+      nx = -dy / len;
+      ny = dx / len;
+      steps = Math.floor(len / spacing);
+      for (s = 0; s <= steps; s++) {
+        t = (steps > 0) ? s / steps : 0.5;
+        px = pts[i][0] + dx * t;
+        py = pts[i][1] + dy * t;
+        callback(px, py, nx, ny, dx / len, dy / len);
+      }
+    }
+  };
+
+  // Helper: stroke a polyline
+  var strokePoly = function(ctx, pts) {
+    ctx.beginPath();
+    ctx.moveTo(sx(pts[0][0]), sy(pts[0][1]));
+    for (var i = 1; i < pts.length; i++) {
+      ctx.lineTo(sx(pts[i][0]), sy(pts[i][1]));
+    }
+    ctx.stroke();
+  };
+
+  // Convert rect feature {x,y,w,h} to a 2-point array for line-based renderers
+  var rectToLine = function(f) {
+    var horiz = (f.w >= f.h);
+    if (horiz) {
+      var cy = f.y + f.h / 2;
+      return [[f.x, cy], [f.x + f.w, cy]];
+    } else {
+      var cx = f.x + f.w / 2;
+      return [[cx, f.y], [cx, f.y + f.h]];
+    }
+  };
+
+  var drawFeature = function(ctx, feature) {
+    var type = feature.type;
+    var i, dx, dy, len, nx, ny, px, py, fcx, fcy;
+    // Support both rect {x,y,w,h} and legacy points[] formats
+    var pts = feature.points;
+    if (!pts && feature.w !== undefined && feature.h !== undefined) {
+      pts = rectToLine(feature);
+    }
+
+    // === LINE/RECT FEATURES ===
+
+    if (type === 'crack' && pts && pts.length > 1) {
+      ctx.strokeStyle = C_MID;
+      ctx.lineWidth = ss(2);
+      ctx.lineCap = 'round';
+      var tickLen = ss(6);
+      alongLine(pts, 10, function(px, py, nx, ny) {
+        ctx.beginPath();
+        ctx.moveTo(sx(px) + nx * tickLen, sy(py) + ny * tickLen);
+        ctx.lineTo(sx(px) - nx * tickLen, sy(py) - ny * tickLen);
+        ctx.stroke();
+      });
+
+    } else if (type === 'chimney' && pts && pts.length > 1) {
+      // Two parallel lines with wider gap
+      var chimGap = ss(10);
+      ctx.strokeStyle = C_MID;
+      ctx.lineWidth = ss(2);
+      ctx.lineCap = 'round';
+      for (i = 0; i < pts.length - 1; i++) {
+        dx = pts[i + 1][0] - pts[i][0];
+        dy = pts[i + 1][1] - pts[i][1];
+        len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1) { continue; }
+        nx = -dy / len;
+        ny = dx / len;
+        ctx.beginPath();
+        ctx.moveTo(sx(pts[i][0]) + nx * chimGap, sy(pts[i][1]) + ny * chimGap);
+        ctx.lineTo(sx(pts[i + 1][0]) + nx * chimGap, sy(pts[i + 1][1]) + ny * chimGap);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(sx(pts[i][0]) - nx * chimGap, sy(pts[i][1]) - ny * chimGap);
+        ctx.lineTo(sx(pts[i + 1][0]) - nx * chimGap, sy(pts[i + 1][1]) - ny * chimGap);
+        ctx.stroke();
+      }
+
+    } else if (type === 'corner' && pts && pts.length > 1) {
+      // V-shape / dihedral — two lines from midpoint outward
+      ctx.strokeStyle = C_MID;
+      ctx.lineWidth = ss(2);
+      ctx.lineCap = 'round';
+      for (i = 0; i < pts.length - 1; i++) {
+        dx = pts[i + 1][0] - pts[i][0];
+        dy = pts[i + 1][1] - pts[i][1];
+        len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1) { continue; }
+        nx = -dy / len;
+        ny = dx / len;
+        var vGap = ss(8);
+        // Left line
+        ctx.beginPath();
+        ctx.moveTo(sx(pts[i][0]) - nx * vGap, sy(pts[i][1]) - ny * vGap);
+        ctx.lineTo(sx(pts[i + 1][0]), sy(pts[i + 1][1]));
+        ctx.stroke();
+        // Right line
+        ctx.beginPath();
+        ctx.moveTo(sx(pts[i][0]) + nx * vGap, sy(pts[i][1]) + ny * vGap);
+        ctx.lineTo(sx(pts[i + 1][0]), sy(pts[i + 1][1]));
+        ctx.stroke();
+      }
+
+    } else if (type === 'couloir' && pts && pts.length > 1) {
+      // Two converging lines (like a gully)
+      ctx.strokeStyle = C_DARK;
+      ctx.lineWidth = ss(1.5);
+      ctx.lineCap = 'round';
+      var cGapStart = ss(12);
+      var cGapEnd = ss(4);
+      for (i = 0; i < pts.length - 1; i++) {
+        dx = pts[i + 1][0] - pts[i][0];
+        dy = pts[i + 1][1] - pts[i][1];
+        len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1) { continue; }
+        nx = -dy / len;
+        ny = dx / len;
+        ctx.beginPath();
+        ctx.moveTo(sx(pts[i][0]) + nx * cGapStart, sy(pts[i][1]) + ny * cGapStart);
+        ctx.lineTo(sx(pts[i + 1][0]) + nx * cGapEnd, sy(pts[i + 1][1]) + ny * cGapEnd);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(sx(pts[i][0]) - nx * cGapStart, sy(pts[i][1]) - ny * cGapStart);
+        ctx.lineTo(sx(pts[i + 1][0]) - nx * cGapEnd, sy(pts[i + 1][1]) - ny * cGapEnd);
+        ctx.stroke();
+      }
+
+    } else if (type === 'overhang' && pts && pts.length > 1) {
+      // Line with triangular teeth on one side
+      ctx.strokeStyle = C_LIGHT;
+      ctx.lineWidth = ss(2);
+      ctx.lineCap = 'round';
+      strokePoly(ctx, pts);
+      var triSize = ss(8);
+      alongLine(pts, 16, function(px, py, nx, ny, tdx, tdy) {
+        ctx.fillStyle = C_LIGHT;
+        ctx.beginPath();
+        ctx.moveTo(sx(px) + nx * triSize, sy(py) + ny * triSize);
+        ctx.lineTo(sx(px) + tdx * triSize * 0.4, sy(py) + tdy * triSize * 0.4);
+        ctx.lineTo(sx(px) - tdx * triSize * 0.4, sy(py) - tdy * triSize * 0.4);
+        ctx.closePath();
+        ctx.fill();
+      });
+
+    } else if (type === 'roof' && pts && pts.length > 1) {
+      // Horizontal hatched bar
+      ctx.strokeStyle = C_LIGHT;
+      ctx.lineWidth = ss(2);
+      ctx.lineCap = 'round';
+      strokePoly(ctx, pts);
+      var roofH = ss(6);
+      alongLine(pts, 6, function(px, py, nx, ny) {
+        ctx.beginPath();
+        ctx.moveTo(sx(px), sy(py));
+        ctx.lineTo(sx(px) + nx * roofH, sy(py) + ny * roofH);
+        ctx.stroke();
+      });
+
+    } else if (type === 'ledge' && pts && pts.length > 1) {
+      // Two parallel lines (= shape), shadow underneath
+      ctx.strokeStyle = C_DARK;
+      ctx.lineWidth = ss(5);
+      ctx.lineCap = 'round';
+      var shadowOff = ss(2);
+      ctx.beginPath();
+      ctx.moveTo(sx(pts[0][0]), sy(pts[0][1]) + shadowOff);
+      for (i = 1; i < pts.length; i++) {
+        ctx.lineTo(sx(pts[i][0]), sy(pts[i][1]) + shadowOff);
+      }
+      ctx.stroke();
+      ctx.strokeStyle = C_MID;
+      ctx.lineWidth = ss(3);
+      strokePoly(ctx, pts);
+
+    } else if (type === 'slab') {
+      // Rectangle/polygon outline for rock wall face
+      ctx.strokeStyle = C_DARK;
+      ctx.lineWidth = ss(1.5);
+      ctx.lineCap = 'round';
+      if (feature.w !== undefined) {
+        // Rect format
+        ctx.strokeRect(sx(feature.x), sy(feature.y), ss(feature.w), ss(feature.h));
+      } else if (pts && pts.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(sx(pts[0][0]), sy(pts[0][1]));
+        for (i = 1; i < pts.length; i++) {
+          ctx.lineTo(sx(pts[i][0]), sy(pts[i][1]));
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+    } else if (type === 'arete' && pts && pts.length > 1) {
+      // Single prominent ridge line
+      ctx.strokeStyle = C_MID;
+      ctx.lineWidth = ss(2.5);
+      ctx.lineCap = 'round';
+      strokePoly(ctx, pts);
+
+    } else if (type === 'ramp' && pts && pts.length > 1) {
+      // Diagonal line with hatch marks on one side
+      ctx.strokeStyle = C_MID;
+      ctx.lineWidth = ss(2);
+      ctx.lineCap = 'round';
+      strokePoly(ctx, pts);
+      var rampH = ss(8);
+      alongLine(pts, 10, function(px, py, nx, ny) {
+        ctx.beginPath();
+        ctx.moveTo(sx(px), sy(py));
+        ctx.lineTo(sx(px) + nx * rampH, sy(py) + ny * rampH);
+        ctx.stroke();
+      });
+
+    } else if (type === 'contour' && pts && pts.length > 1) {
+      // Thin background contour line
+      ctx.strokeStyle = C_DARK;
+      ctx.lineWidth = ss(1);
+      ctx.lineCap = 'round';
+      strokePoly(ctx, pts);
+
+    } else if (type === 'contour_poly' && pts && pts.length > 2) {
+      // Filled contour polygon
+      ctx.fillStyle = '#252525';
+      ctx.strokeStyle = C_DARK;
+      ctx.lineWidth = ss(1);
+      ctx.beginPath();
+      ctx.moveTo(sx(pts[0][0]), sy(pts[0][1]));
+      for (i = 1; i < pts.length; i++) {
+        ctx.lineTo(sx(pts[i][0]), sy(pts[i][1]));
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+    } else if (type === 'arete' && feature.x1 !== undefined) {
+      // Diagonal ridge line
+      ctx.strokeStyle = C_MID;
+      ctx.lineWidth = ss(2.5);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(sx(feature.x1), sy(feature.y1));
+      ctx.lineTo(sx(feature.x2), sy(feature.y2));
+      ctx.stroke();
+
+    // === POINT FEATURES (need x, y) ===
+
+    } else if (type === 'bolt') {
+      // X mark (bolt/expansion bolt)
+      var bArm = ss(5);
+      fcx = sx(feature.x);
+      fcy = sy(feature.y);
+      ctx.strokeStyle = C_TEXT;
+      ctx.lineWidth = ss(2);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(fcx - bArm, fcy - bArm);
+      ctx.lineTo(fcx + bArm, fcy + bArm);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(fcx + bArm, fcy - bArm);
+      ctx.lineTo(fcx - bArm, fcy + bArm);
+      ctx.stroke();
+
+    } else if (type === 'piton') {
+      // Small hook shape
+      fcx = sx(feature.x);
+      fcy = sy(feature.y);
+      var pSize = ss(6);
+      ctx.strokeStyle = C_TEXT;
+      ctx.lineWidth = ss(2);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(fcx, fcy - pSize);
+      ctx.lineTo(fcx, fcy);
+      ctx.lineTo(fcx + pSize, fcy);
+      ctx.stroke();
+
+    } else if (type === 'rappel') {
+      // Circle with downward arrow (abseil/rappel anchor)
+      fcx = sx(feature.x);
+      fcy = sy(feature.y);
+      var rapR = ss(6);
+      ctx.strokeStyle = C_TEXT;
+      ctx.lineWidth = ss(2);
+      ctx.beginPath();
+      ctx.arc(fcx, fcy, rapR, 0, Math.PI * 2);
+      ctx.stroke();
+      // Downward arrow
+      var arrLen = ss(10);
+      var arrW = ss(4);
+      ctx.beginPath();
+      ctx.moveTo(fcx, fcy + rapR);
+      ctx.lineTo(fcx, fcy + rapR + arrLen);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(fcx - arrW, fcy + rapR + arrLen - arrW);
+      ctx.lineTo(fcx, fcy + rapR + arrLen);
+      ctx.lineTo(fcx + arrW, fcy + rapR + arrLen - arrW);
+      ctx.stroke();
+
+    } else if (type === 'chockstone') {
+      // Chimney lines with circle wedged between
+      fcx = sx(feature.x);
+      fcy = sy(feature.y);
+      var csGap = ss(10);
+      var csH = ss(20);
+      var csR = ss(5);
+      ctx.strokeStyle = C_MID;
+      ctx.lineWidth = ss(2);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(fcx - csGap, fcy - csH / 2);
+      ctx.lineTo(fcx - csGap, fcy + csH / 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(fcx + csGap, fcy - csH / 2);
+      ctx.lineTo(fcx + csGap, fcy + csH / 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(fcx, fcy, csR, 0, Math.PI * 2);
+      ctx.fillStyle = C_MID;
+      ctx.fill();
+
+    } else if (type === 'tree') {
+      // Trunk + branches + crown
+      var trunkH = ss(14);
+      var branchH = ss(10);
+      var branchW = ss(7);
+      fcx = sx(feature.x);
+      fcy = sy(feature.y);
+      ctx.strokeStyle = C_MID;
+      ctx.lineWidth = ss(2);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(fcx, fcy);
+      ctx.lineTo(fcx, fcy - trunkH);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(fcx, fcy - trunkH);
+      ctx.lineTo(fcx - branchW, fcy - trunkH - branchH);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(fcx, fcy - trunkH);
+      ctx.lineTo(fcx + branchW, fcy - trunkH - branchH);
+      ctx.stroke();
+      ctx.fillStyle = '#335533';
+      ctx.beginPath();
+      ctx.arc(fcx, fcy - trunkH - branchH + ss(2), ss(5), 0, Math.PI * 2);
+      ctx.fill();
+
+    } else if (type === 'grass') {
+      // Small upward strokes
+      fcx = sx(feature.x);
+      fcy = sy(feature.y);
+      var gH = ss(8);
+      var gW = ss(3);
+      ctx.strokeStyle = '#446644';
+      ctx.lineWidth = ss(1.5);
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(fcx - gW * 2, fcy); ctx.lineTo(fcx - gW * 2.5, fcy - gH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(fcx - gW, fcy); ctx.lineTo(fcx - gW, fcy - gH * 1.2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(fcx, fcy); ctx.lineTo(fcx, fcy - gH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(fcx + gW, fcy); ctx.lineTo(fcx + gW, fcy - gH * 1.1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(fcx + gW * 2, fcy); ctx.lineTo(fcx + gW * 2.5, fcy - gH * 0.9); ctx.stroke();
+
+    } else if (type === 'cross') {
+      // Scree/rubble mark
+      var arm = ss(5);
+      fcx = sx(feature.x);
+      fcy = sy(feature.y);
+      ctx.strokeStyle = C_DARK;
+      ctx.lineWidth = ss(1.5);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(fcx - arm, fcy - arm);
+      ctx.lineTo(fcx + arm, fcy + arm);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(fcx + arm, fcy - arm);
+      ctx.lineTo(fcx - arm, fcy + arm);
+      ctx.stroke();
+
+    } else if (type === 'label') {
+      ctx.fillStyle = C_LIGHT;
+      ctx.font = Math.round(ss(16)) + 'px monospace';
+      ctx.fillText(feature.text || '', sx(feature.x), sy(feature.y));
+    }
+  };
+
+  // ===================================================================
+  // WORD WRAP
+  // ===================================================================
+
+  var wrapText = function(ctx, text, maxWidth) {
+    var words = text.split(' ');
+    var lines = [];
+    var currentLine = '';
+    for (var i = 0; i < words.length; i++) {
+      var testLine = currentLine ? (currentLine + ' ' + words[i]) : words[i];
+      var metrics = ctx.measureText(testLine);
+      if (metrics.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = words[i];
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) { lines.push(currentLine); }
+    return lines;
+  };
+
+"
+
+onActivate="
+  $.subscribe('Zapp/{zapp_index}/Output/appMode', function(v) {
+    mode = v;
+    control('#tc', 'REFRESH');
+  });
+  $.subscribe('Zapp/{zapp_index}/Output/selectorIdx', function(v) {
+    selIdx = v;
+    if (mode === 0) { control('#tc', 'REFRESH'); }
+  });
+  $.subscribe('Zapp/{zapp_index}/Output/topoIdx', function(v) {
+    currentTopo = v;
+    control('#tc', 'REFRESH');
+  });
+  $.subscribe('Zapp/{zapp_index}/Output/anchorIdx', function(v) {
+    currentWP = v;
+    updatePitch();
+    if (mode !== 0) { control('#tc', 'REFRESH'); }
+  });
+  $.subscribe('Zapp/{zapp_index}/Output/zoomLvl', function(v) {
+    ZOOM = v / 10;
+    if (mode === 1) { control('#tc', 'REFRESH'); }
+  });
+"
+
+onDeactivate="">
+
+  <div id="suuntoplus" style="width:100%; height:100%; background-color:#1A1A1A;">
+    <object id="tc" type="canvas"
+            build="ctx => drawScreen(ctx)"
+            style="position:absolute; left:0; top:0; width:100%; height:100%;" />
+  </div>
+
+  <userInput>
+    <pushButton name="up"
+      onClick="$.put('/Zapp/{zapp_index}/Event', 1, null, 'int32');"
+      onLongPressStart="$.put('/Zapp/{zapp_index}/Event', 2, null, 'int32');" />
+    <pushButton name="down"
+      onClick="$.put('/Zapp/{zapp_index}/Event', 3, null, 'int32');"
+      onLongPressStart="$.put('/Zapp/{zapp_index}/Event', 4, null, 'int32');" />
+    <pushButton name="next"
+      onClick="$.put('/Zapp/{zapp_index}/Event', 5, null, 'int32');"
+      onLongPressStart="$.put('/Zapp/{zapp_index}/Event', 6, null, 'int32');" />
+  </userInput>
+
+</uiView>
