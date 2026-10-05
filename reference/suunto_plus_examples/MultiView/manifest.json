@@ -1,0 +1,12 @@
+{
+  "name": "Multi view",
+  "version": "1.0",
+  "author": " ",
+  "description": " ",
+  "type": "feature",
+  "usage": "workout",
+  "modificationTime": 1687879064,
+  "in": [],
+  "out": [],
+  "template": [{ "name": "t1.html" }, { "name": "t2.html" }]
+}

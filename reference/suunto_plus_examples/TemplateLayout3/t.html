@@ -1,0 +1,90 @@
+<!-- SuuntoPlus: Template with 3 fields (2 alternatives) with units -->
+<uiView
+  onActivate="
+    setInterval(function() { next('#z-values'); }, 5000);
+  ">
+
+  <div id="suuntoplus">
+
+    <!-- Title and its background -->
+    <div class="cm-fg" style="width:100%;height:25%">
+      <div class="sp-t-m p-hc" style="top:calc(60% - 50%e)">
+        VIEW SET
+      </div>
+    </div>
+
+    <!-- vertical separator -->
+    <div class="cm-fg p-hc" style="top:34%;width:2px;height:30%;opacity:0.4"></div>
+
+    <!-- top -->
+    <uiViewSet id="z-values" transition.type="crossfade" rollOver="both" transition.duration="0">
+      <!-- alt 1 -->
+      <div>
+        <!-- left -->
+        <div class="sp-t-s" style="top:calc(42% - 100%e);left:calc(26% - 50%e)">
+          {zapp_tl1_title}
+        </div>
+        <div class="sp-vertical-center" style="top:40%;left:calc(26% - 50%e)">
+          <span class="sp-d-m f-num">
+            <eval input="{zapp_tl1_input}" outputFormat="{zapp_tl1_format}" default="--" />
+          </span>
+          <span class="sp-b-s" style="padding-left:4px">
+            {zapp_tl1_unit}
+          </span>
+        </div>
+
+        <!-- right -->
+        <div class="sp-t-s" style="top:calc(42% - 100%e);left:calc(74% - 50%e)">
+          {zapp_tr1_title}
+        </div>
+        <div class="sp-vertical-center" style="top:40%;left:calc(74% - 50%e)">
+          <span class="sp-d-m f-num">
+            <eval input="{zapp_tr1_input}" outputFormat="{zapp_tr1_format}" default="--" />
+          </span>
+          <span class="sp-b-s" style="padding-left:4px">
+            {zapp_tr1_unit}
+          </span>
+        </div>
+      </div>
+
+      <!-- alt 2 -->
+      <div>
+        <!-- left -->
+        <div class="sp-t-s" style="top:calc(42% - 100%e);left:calc(26% - 50%e)">
+          {zapp_tl2_title}
+        </div>
+        <div class="sp-vertical-center" style="top:40%;left:calc(26% - 50%e)">
+          <span class="sp-d-m f-num">
+            <eval input="{zapp_tl2_input}" outputFormat="{zapp_tl2_format}" default="--" />
+          </span>
+          <span class="sp-b-s" style="padding-left:4px">
+            {zapp_tl2_unit}
+          </span>
+        </div>
+
+        <!-- right -->
+        <div class="sp-t-s" style="top:calc(42% - 100%e);left:calc(74% - 50%e)">
+          {zapp_tr2_title}
+        </div>
+        <div class="sp-vertical-center" style="top:40%;left:calc(74% - 50%e)">
+          <span class="sp-d-m f-num">
+            <eval input="{zapp_tr2_input}" outputFormat="{zapp_tr2_format}" default="--" />
+          </span>
+          <span class="sp-b-s" style="padding-left:4px">
+            {zapp_tr2_unit}
+          </span>
+        </div>
+      </div>
+    </uiViewSet>
+
+    <!-- bottom -->
+    <div class="sp-t-s p-hc" style="top:calc(70% - 50%e)">
+      {zapp_bottom_title}
+    </div>
+    <div class="sp-d-m f-num p-hc" style="top:calc(82% - 50%e)">
+      <eval input="{zapp_bottom_input}" outputFormat="{zapp_bottom_format}" default="--" />
+    </div>
+
+  </div>
+
+</uiView>

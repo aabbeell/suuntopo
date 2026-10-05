@@ -1,0 +1,74 @@
+<!doctype html>
+<!-- ABOUTME: Source of the Suuntopo store banner (1920x1080), rendered to banner.png with headless Chrome. -->
+<!-- ABOUTME: Self-contained: system fonts and the simulator screenshots next to it; no Suunto or third-party marks. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Suuntopo banner</title>
+<style>
+  :root {
+    --bg: #000000;
+    --text: #FFFFFF;
+    --dim: #B3B3B3;
+    --cur: #FFD400;
+    --next: #FF5A36;
+    --done: #B05A48;
+    --walk: #5AC8FA;
+  }
+  html, body { margin: 0; padding: 0; background: var(--bg); }
+  body {
+    width: 1920px; height: 1080px; overflow: hidden; position: relative;
+    font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+  }
+  .art { position: absolute; left: 0; top: 0; }
+  .copy { position: absolute; left: 170px; top: 270px; width: 860px; }
+  h1 { margin: 0; white-space: nowrap; font-size: 116px; font-weight: 700; letter-spacing: -2px; line-height: 1; }
+  .bar { width: 120px; height: 10px; background: var(--cur); border-radius: 5px; margin: 40px 0 36px; }
+  .tag { margin: 0; font-size: 46px; line-height: 1.25; font-weight: 500; }
+  ul { list-style: none; margin: 44px 0 0; padding: 0; }
+  li { font-size: 32px; line-height: 1.5; color: var(--dim); }
+  li b { color: var(--text); font-weight: 600; }
+  .note { position: absolute; left: 170px; bottom: 100px; font-size: 22px; color: #8A8A8A; }
+  .watch {
+    position: absolute; border-radius: 50%; overflow: hidden; background: #000;
+    box-shadow: 0 0 0 10px #1E1E1E, 0 0 0 12px #3A3A3A;
+  }
+  .watch img { display: block; width: 100%; height: 100%; }
+  .w1 { width: 560px; height: 560px; left: 1060px; top: 150px; }
+  .w2 { width: 340px; height: 340px; left: 1500px; top: 640px; }
+</style>
+</head>
+<body>
+  <!-- Faint route line art in the app's route colours: climbed, current, upcoming, then the walk off. -->
+  <svg class="art" width="1920" height="1080" viewBox="0 0 1920 1080" aria-hidden="true">
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.28">
+      <polyline points="60,1040 120,930 100,820" stroke="var(--done)" stroke-width="8"/>
+      <polyline points="100,820 150,700 135,590" stroke="var(--cur)" stroke-width="12"/>
+      <polyline points="135,590 90,470 120,350 95,230" stroke="var(--next)" stroke-width="8"/>
+      <polyline points="95,230 160,170 260,150 330,90" stroke="var(--walk)" stroke-width="5"/>
+    </g>
+    <g fill="#FFFFFF" opacity="0.35">
+      <circle cx="100" cy="820" r="9"/>
+      <circle cx="135" cy="590" r="9"/>
+      <circle cx="120" cy="350" r="9"/>
+      <circle cx="95" cy="230" r="9"/>
+    </g>
+  </svg>
+
+  <div class="copy">
+    <h1>Suuntopo</h1>
+    <div class="bar"></div>
+    <p class="tag">Your multi-pitch route on the watch, belay by belay.</p>
+    <ul>
+      <li><b>Draw</b> your topo in a free web editor</li>
+      <li><b>Hold</b> UP or DOWN for the next or previous pitch</li>
+      <li><b>Read</b> grade, length and pitch notes</li>
+    </ul>
+  </div>
+  <div class="note">Shown: the built-in fictional demo topo, not a real climb. Independent app, not affiliated with Suunto.</div>
+
+  <div class="watch w1"><img src="screen-1-map.png" alt="Map view at pitch 2 of the demo topo"></div>
+  <div class="watch w2"><img src="screen-2-list.png" alt="Topo list with the demo topo"></div>
+</body>
+</html>

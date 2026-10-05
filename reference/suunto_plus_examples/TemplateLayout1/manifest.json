@@ -1,0 +1,12 @@
+{
+  "name": "Template",
+  "version": "1.0",
+  "author": "Suunto",
+  "description": "One field with unit",
+  "type": "feature",
+  "usage": "workout",
+  "modificationTime": 1654707000,
+  "template": [{ "name": "t.html" }],
+  "out": [{ "name": "value1" }],
+  "image": [{ "name": "layout_example.png", "type": "a64" }]
+}

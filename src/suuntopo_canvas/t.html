@@ -1,0 +1,530 @@
+<!-- ABOUTME: Suuntopo watch template: receives the open topo's geometry streamed by main.js and draws it in three canvas -->
+<!-- ABOUTME: tiles under a hard per-tile budget. main.js owns navigation and every text element except the loading line #ld. -->
+<uiView onLoad="
+  // BEGIN SHARED
+  // Geometry words, 3 bytes each: word 0 nR + nB*128 + nF*8192, word 1 point count, then stances (3 per word),
+  // route points (x*4096+y), feature table (type*1024+count) and feature points.
+  var GB = new Uint8Array(1932);
+  var nR = 0, nB = 0, nF = 0, oR = 0, oF = 0, oP = 0;
+  var wd = function (w) {
+    w *= 3;
+    return GB[w] * 65536 + GB[w + 1] * 256 + GB[w + 2];
+  };
+  // Route vertex index of stance i.
+  var stance = function (i) {
+    return Math.floor(wd(2 + Math.floor(i / 3)) / (i % 3 ? (i % 3 === 1 ? 128 : 16384) : 1)) % 128;
+  };
+
+  // Camera: world centre and zoom normalised to the 466 px display; fits route vertices i0..i1 into 0.8 of the width
+  // and hmax px of height (0.54 of the display on the Map, so the target ring stays above #h1 at 80%; 0.43 on a list card
+  // to leave the label line free).
+  var camX = 0, camY = 0, camZ = 1, drawMode = 0, hl = -1, ready = 0;
+  var fitRange = function (i0, i1, zlo, hmax) {
+    var x0 = 4096, y0 = 4096, x1 = -1, y1 = -1, v, x, y;
+    for (; i0 <= i1; i0++) {
+      v = wd(oR + i0);
+      x = Math.floor(v / 4096);
+      y = v % 4096;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+    camZ = Math.max(zlo, Math.min(2, 372.8 / Math.max(x1 - x0, 40), hmax / Math.max(y1 - y0, 40)));
+    camX = (x0 + x1) / 2;
+    camY = (y0 + y1) / 2;
+  };
+
+  // Units the last tile drew and terrain features it left out (the editor preview shows both).
+  var units = 0, skipped = 0;
+
+  // The renderer: makeRenderer() returns drawTile(ctx, ti), which draws tile ti. Its constants, state and helpers live in
+  // makeRenderer's scope, so neither that scope nor the template's reaches 56 names, where Duktape gives a scope record a
+  // hash part (about 1.2 KB). makeRenderer runs once and is dropped with its prototype (a cycle refcounting cannot free).
+  var makeRenderer = function () {
+  var MIP = '{{ DISPLAY_ID }}' !== 'q';
+  // Dim terrain (couloirs, slabs, contours, scree) keeps about 6:1 against black on q.
+  var C_TER = MIP ? '#FFFFFF' : '#A6A6A6', C_DIM = MIP ? '#AAAAAA' : '#8A8A8A', C_GLY = MIP ? '#FFFFFF' : '#D9D9D9';
+  var C_VEG = MIP ? '#55FF55' : '#6FA86F', C_NEXT = MIP ? '#FF0000' : '#FF5A36', C_CUR = MIP ? '#FFFF00' : '#FFD400';
+  // Done pitches keep at least 3:1 against black; walks (approach, descent) use a blue no terrain uses.
+  var C_DONE = MIP ? '#AA5555' : '#B05A48', C_WALK = MIP ? '#55AAFF' : '#5AC8FA';
+  var TILE_CAP = 150, TILE_TOP = [0.16, 0.39, 0.62];
+  // Point glyphs of b n v x t w z: M move, L line; digits 0-8 map to -1..1 of the glyph size.
+  var GLYPH = ['M00L88M80L08', 'M20L26L86', 'M02L82L48L02', 'M40L74L48L14L40', 'M48L44L10M44L70', 'M26L02M46L41M66L82', 'M00L88M80L08'];
+  var FPRI = '1111111223442222334';
+
+  // Pen with budget: units = 2 per stroke, 1 per moveTo or lineTo. A path is stroked at 20 ops, and an op that would take
+  // the tile past TILE_CAP is dropped, so a tile never goes black. Frames draw no arc and no fill (their Race S cost is
+  // unmeasured); the only other call is the background fillRect, counted as 2 units in drawTile.
+  var gx = null, dry = 0, pOps = 0, pCol = '', pW = 0, lastX = 0, lastY = 0, steps = 0;
+  var sz = 1, ox = 0, oy = 0, tW = 0, tH = 0, mg = 0, kd = 1, kw = 1, dec = 3, cX = 0, cY = 0, cOpen = 0, PX = 0, PY = 0;
+  var flush = function () {
+    if (pOps) {
+      units += 2;
+      if (!dry) { gx.stroke(); }
+    }
+    pOps = 0;
+  };
+  var pen = function (col, w) {
+    w = w * kw;
+    if (col !== pCol || w !== pW) {
+      flush();
+      pCol = col;
+      pW = w;
+      if (!dry) { gx.strokeStyle = col; gx.lineWidth = w; }
+    }
+  };
+  // moveTo (line 0) or lineTo (line 1) on the open path.
+  var op = function (x, y, line) {
+    if (pOps >= 20) {
+      flush();
+      if (line) { op(lastX, lastY, 0); }
+    }
+    if (units + 3 > TILE_CAP) { return; }
+    if (!pOps && !dry) { gx.beginPath(); }
+    pOps++;
+    units++;
+    if (!dry) {
+      if (line) { gx.lineTo(x, y); } else { gx.moveTo(x, y); }
+    }
+    lastX = x;
+    lastY = y;
+  };
+  // Dry-runs fn(a, b, c) into a fresh path and returns its unit cost.
+  var costOf = function (fn, a, b, c) {
+    var sU = units, sO = pOps, sC = pCol, sWd = pW, sX = lastX, sY = lastY;
+    dry = 1;
+    units = 0;
+    pOps = 0;
+    pCol = '';
+    fn(a, b, c);
+    flush();
+    a = units;
+    dry = 0;
+    units = sU; pOps = sO; pCol = sC; pW = sWd; lastX = sX; lastY = sY;
+    return a;
+  };
+  var vis = function (x0, y0, x1, y1) {
+    return !((x0 > x1 ? x0 : x1) < -mg || (x0 < x1 ? x0 : x1) > tW + mg || (y0 > y1 ? y0 : y1) < -mg || (y0 < y1 ? y0 : y1) > tH + mg);
+  };
+  // Screen position of geometry word w into PX, PY.
+  var pt = function (w) {
+    w = wd(w);
+    PX = Math.floor(w / 4096) * sz + ox;
+    PY = (w % 4096) * sz + oy;
+  };
+  // Clipping polyline from (cX, cY): draws to (x, y) only where the segment nears the tile.
+  var cTo = function (x, y) {
+    if (vis(cX, cY, x, y)) {
+      if (!cOpen) { op(cX, cY, 0); cOpen = 1; }
+      op(x, y, 1);
+    } else {
+      cOpen = 0;
+    }
+    cX = x;
+    cY = y;
+  };
+
+  // Route vertices i0..i1, dropping vertices closer than dec px to the last one kept.
+  var drawRun = function (i0, i1, col, w) {
+    if (i1 <= i0) { return; }
+    pen(col, w);
+    pt(oR + i0);
+    cX = PX; cY = PY; cOpen = 0;
+    while (i0 < i1) {
+      pt(oR + ++i0);
+      if (i0 === i1 || (PX - cX) * (PX - cX) + (PY - cY) * (PY - cY) >= dec * dec * kd * kd) { cTo(PX, PY); }
+    }
+  };
+  // Route by importance: current pitch, upcoming, done, then walks; under budget pressure the tail is what drops.
+  // The walk of the position (approach at Start, descent at Top) is drawn wide.
+  var drawRoute = function () {
+    var n = nB - 1, b0 = stance(0), bn = stance(n);
+    if (hl < 0) {
+      drawRun(b0, bn, C_NEXT, 5);
+    } else {
+      if (hl >= 1 && hl <= n) { drawRun(stance(hl - 1), stance(hl), C_CUR, 7); }
+      if (hl <= n) { drawRun(stance(hl), bn, C_NEXT, 5); }
+      if (hl > 1) { drawRun(b0, stance(Math.min(hl, n + 1) - 1), C_DONE, 4); }
+    }
+    drawRun(bn, nR - 1, C_WALK, hl > n ? 5 : 2.5);
+    drawRun(0, b0, C_WALK, hl ? 2.5 : 5);
+  };
+  // Stances as white dots (1 px segments in one path, round caps set per tile: 2 units each, as arc costs are unmeasured on the
+  // watch), smaller when zoomed out so a long route stays visible; then the target stance ringed: a 20 px white dot under a
+  // 14 px yellow one, each its own path (8 units).
+  var drawBelays = function () {
+    var i, n = nB - 1, tg = hl < 0 ? -1 : Math.min(hl, n), r = Math.max(2.5, Math.min(6, camZ * 10));
+    pen('#FFFFFF', 2 * r);
+    for (i = 0; i <= n; i++) {
+      pt(oR + stance(i));
+      if (i !== tg && vis(PX, PY, PX, PY)) {
+        op(PX, PY, 0);
+        op(PX + 1, PY, 1);
+      }
+    }
+    pt(oR + stance(Math.max(tg, 0)));
+    if (tg >= 0 && vis(PX, PY, PX, PY)) {
+      pen('#FFFFFF', 20);
+      op(PX, PY, 0);
+      op(PX + 1, PY, 1);
+      pen(C_CUR, 14);
+      op(PX, PY, 0);
+      op(PX + 1, PY, 1);
+    }
+    flush();
+  };
+
+  // Point feature type t (12-18): one glyph per point.
+  var drawGlyphs = function (t, np, po) {
+    var g = GLYPH[t - 12], h = (t === 18 ? 4 : 8) * kd, i, j;
+    pen(t === 16 || t === 17 ? C_VEG : (t === 18 ? C_DIM : C_GLY), t === 18 ? 1.5 : 2.5);
+    for (i = 0; i < np; i++) {
+      pt(po + i);
+      if (vis(PX - h, PY - h, PX + h, PY + h)) {
+        for (j = 0; j < g.length; j += 3) {
+          op(PX + (g.charCodeAt(j + 1) - 52) * h / 4, PY + (g.charCodeAt(j + 2) - 52) * h / 4, g.charAt(j) === 'L');
+        }
+      }
+    }
+  };
+  // Line feature type t (0-10): plain, ticks (roof, overhang, ramp), zig-zag (crack), double (chimney, corner, gully)
+  // or closed (slab). Decorations become plain lines below zoom 0.6. Zig-zag and ticks step along the whole segment, so they
+  // are drawn (dd) only on a segment that nears the tile and is at most two tile widths long on screen; a longer one draws
+  // plain. A segment whose bounding box nears the tile while its line misses it costs steps but no budget units, so the
+  // patterned length is also capped per tile (steps, 8,000 px at 466 px width, dry runs included); past the cap segments
+  // draw plain. The feature stops once the tile budget is spent. Together these bound the work per frame (SPEC §7).
+  var drawLine = function (t, np, po) {
+    var deco = camZ >= 0.6, i, j, x0, y0, len, ux, uy, s = 0, h, n, dd, e;
+    pen(t > 7 ? C_DIM : (t === 6 ? C_GLY : C_TER), t === 2 ? 5 : (t === 10 ? 1.5 : (t === 6 ? 3 : 2.5)));
+    if (t === 4 || t === 5 || t === 8) { s = (t === 4 ? 5 : (t === 5 ? 2.5 : 6)) * kd; }
+    pt(po);
+    cX = PX; cY = PY; cOpen = 0;
+    for (i = 1; (i < np || (t === 9 && i === np && np > 2)) && units + 3 <= TILE_CAP; i++) {
+      x0 = cX;
+      y0 = cY;
+      pt(po + i % np);
+      len = Math.sqrt((PX - x0) * (PX - x0) + (PY - y0) * (PY - y0));
+      if (len < 0.5) { continue; }
+      ux = (PX - x0) / len;
+      uy = (PY - y0) / len;
+      // dd: this segment gets its zig-zag (3) or ticks (0, 1, 7).
+      dd = deco && (t === 3 || t < 2 || t === 7) && len <= 2 * tW && vis(x0, y0, PX, PY) && (steps += len / kd) <= 8000;
+      if (s && deco) {
+        if (vis(x0, y0, PX, PY)) {
+          op(x0 - uy * s, y0 + ux * s, 0); op(PX - uy * s, PY + ux * s, 1);
+          op(x0 + uy * s, y0 - ux * s, 0); op(PX + uy * s, PY - ux * s, 1);
+        }
+        cX = PX; cY = PY; cOpen = 0;
+        continue;
+      }
+      n = Math.max(2, Math.round(len / (4 * kd)));
+      for (j = 1; t === 3 && dd && j < n; j++) {
+        h = (j % 2 ? 3 : -3) * kd;
+        cTo(x0 + ux * len * j / n - uy * h, y0 + uy * len * j / n + ux * h);
+      }
+      cTo(PX, PY);
+      if (dd && t !== 3) {
+        h = (t === 0 ? 8 : (t === 1 ? 14 : 10)) * kd;
+        n = Math.floor(len / h);
+        for (j = 0; j <= n; j++) {
+          // Tick j sits e px back from the end of the segment; the ticks are centred along it.
+          e = len - (len - n * h) / 2 - h * j;
+          x0 = PX - ux * e;
+          y0 = PY - uy * e;
+          if (vis(x0, y0, x0, y0)) {
+            op(x0, y0, 0);
+            if (t === 7) { op(x0 + (ux - uy) * 5 * kd, y0 + (uy + ux) * 5 * kd, 1); } else { op(x0 - uy * (t ? 9 : 6) * kd, y0 + ux * (t ? 9 : 6) * kd, 1); }
+          }
+        }
+        cOpen = 0;
+      }
+    }
+  };
+
+  // Every function gets an automatic prototype object (about 50 B); none of these helpers is a constructor.
+  flush.prototype = pen.prototype = op.prototype = costOf.prototype = vis.prototype = pt.prototype = cTo.prototype = null;
+  drawRun.prototype = drawRoute.prototype = drawBelays.prototype = drawGlyphs.prototype = drawLine.prototype = null;
+
+  // Draws tile ti (0-2): terrain by priority in what the route and stances leave of the budget, then route and stances.
+  return function (ctx, ti) {
+    var W = ctx.width, k = W / 466, budget, pr, f, v, t, po, c, fn;
+    gx = ctx;
+    dry = 0;
+    pOps = 0;
+    pCol = '';
+    units = 2;
+    skipped = 0;
+    steps = 0;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, W, ctx.height);
+    ctx.lineCap = 'round';
+    if (!drawMode || !ready) { return units; }
+    tW = W; tH = ctx.height; mg = 12 * k; kd = k; kw = Math.max(k, 0.6);
+    sz = camZ * k; ox = W / 2 - camX * sz; oy = W / 2 - camY * sz - Math.round(W * TILE_TOP[ti]);
+    dec = camZ < 0.6 ? 6 : 3;
+    budget = TILE_CAP - 2 - costOf(drawRoute) - costOf(drawBelays);
+    for (pr = 1; pr <= 4 && ready > 1; pr++) {
+      for (f = 0, po = oP; f < nF; f++) {
+        v = wd(oF + f);
+        t = Math.floor(v / 1024);
+        fn = t < 12 ? drawLine : drawGlyphs;
+        if (FPRI.charCodeAt(t) - 48 === pr && t !== 11 && (t < 12 || camZ >= 0.6)) {
+          c = costOf(fn, t, v % 1024, po);
+          if (c && c + 3 <= budget) {
+            budget -= c + 3;
+            fn(t, v % 1024, po);
+          } else if (c) {
+            skipped++;
+          }
+        }
+        po += v % 1024;
+      }
+    }
+    flush();
+    pCol = '';
+    drawRoute();
+    flush();
+    drawBelays();
+    return units;
+  };
+  };
+  var drawTile = makeRenderer();
+  makeRenderer.prototype = null;
+  makeRenderer = null;
+  // END SHARED
+
+  // Stream receiver: rx[0-13] payload, rx[14] check word, rx[15] chunk index. A chunk is kept once its check matches.
+  // Pull state: pend the open request's sequence number (0 none), want its chunk, seq the last number used, gj the output
+  // the read chain is at, gs the request it reads for, seen the request the watchdog saw pending, armed a watchdog timer
+  // set, act the template active.
+  var rx = new Float32Array(16), got = new Uint8Array(46), hash = 0, ms = -1, K = 0, nGot = 0;
+  var base = '', evp = '', tok = [], cb = [], lastKey = -1, tile = 0, run = 0, unitSent = 0;
+  var pend = 0, want = 0, seq = 0, gj = 0, gs = 0, seen = 0, armed = 0, act = 0;
+  var send = function (e) {
+    if (evp) { $.put(evp, e, null, 'int32'); }
+  };
+  // Sends the units setting to main.js (5 metric, 6 imperial) when it differs from the last one this template sent, so an
+  // activation does not make main.js rewrite its text twice. Made once: a function per activation would be cyclic garbage.
+  var unitsMode = function (v) {
+    v = Number(v) === 1 ? 6 : 5;
+    if (v !== unitSent) {
+      unitSent = v;
+      send(v);
+    }
+  };
+  // Refreshes #c0, #c1 and #c2 one after the other, 100 ms apart, so each falls in its own 10 Hz tick (refreshes in one
+  // tick can fill the WBMAIN pool). One chain runs at a time: a change while it runs makes it start again at #c0.
+  // onDeactivate ends the chain (tile 3), so a timer the firmware drops with the view, or a REFRESH that throws, cannot
+  // leave run set and stop every later refresh.
+  var stagger = function () {
+    if (tile > 2) {
+      run = 0;
+      return;
+    }
+    try { control('#c' + tile, 'REFRESH'); } catch (e) {}
+    if (++tile < 3) { setTimeout(stagger, 100); } else { run = 0; }
+  };
+  // Applies drawing state ms (64 + idx Map, 128 + idx whole topo, 0 none) and refreshes the tiles when it changed.
+  var paint = function () {
+    var n = nB - 1, i = ms % 64, key, on;
+    drawMode = ms < 64 ? 0 : 1;
+    hl = i;
+    if (drawMode && ready) {
+      if (ms < 128) {
+        fitRange(i < 1 ? 0 : stance(Math.min(i, n) - 1), i > n ? nR - 1 : stance(Math.max(Math.min(i, n), 1)), 0.35, 250);
+      } else {
+        fitRange(0, nR - 1, 0.045, 200);
+      }
+    }
+    // The line under the drawing: on the open topo's list card, the loading progress and then how to open the Map; on the
+    // Map, the progress only until the route can be drawn, so it never covers the current pitch. The percentage counts from
+    // chunk 0, which gives the chunk count K.
+    on = drawMode && hash && (ms > 127 || !ready) ? 'VISIBLE' : 'HIDDEN';
+    setStyle('#ld', 'visibility', on);
+    setStyle('#ld *', 'visibility', on);
+    if (on === 'VISIBLE') { setText('#ld', ready > 1 ? '{{hintMap}}' : '{{wLoading}} ' + (K ? Math.min(99, Math.floor(100 * nGot / K)) : 0) + '%'); }
+    key = ms * 4 + ready + hash * 1024;
+    if (key !== lastKey) {
+      lastKey = key;
+      tile = 0;
+      if (!run) {
+        run = 1;
+        stagger();
+      }
+    }
+  };
+  // The watch allows only so many simultaneous resource subscriptions per sport mode (the first watch test hit the limit at
+  // 15 of v1.0's 18 and stopped loading at 0%), so the template subscribes to three outputs: ms, mh and ck. It pulls the
+  // geometry one chunk at a time: send(4000000 + seq * 64 + k) asks main.js to write chunk k to d0..d14 and seq * 64 + k to
+  // ck; the ck callback then reads d0..d14 with $.get one after the other, so one read is in flight at a time. The check
+  // word drops a chunk read across a change. A request that gets no answer is sent again by the watchdog.
+  // rv: i 0-13 payload, 14 check, 15 ck, 16 stream id, 17 drawing state.
+  var rv = function (i, v) {
+    var k, h, j, w;
+    if (typeof v !== 'number' || !isFinite(v)) { return; }
+    if (i === 16) {
+      if (v !== hash) {
+        hash = v; nGot = 0; K = 0; ready = 0; pend = 0;
+        for (j = 0; j < 46; j++) { got[j] = 0; }
+        paint();
+        pull();
+      }
+      return;
+    }
+    if (i === 17) {
+      if (v !== ms) { ms = v; paint(); }
+      return;
+    }
+    if (i === 15) {
+      // A repeated ck (the simulator delivers every output every second) does not start a second chain.
+      if (pend && gs !== pend && v === pend * 64 + want) {
+        rx[15] = want;
+        gj = 0;
+        gs = pend;
+        try { $.get(base + 'd0', nx); } catch (e) {}
+      }
+      return;
+    }
+    rx[i] = v;
+    k = rx[15];
+    h = hash * 7 + k * 131 + 1;
+    if (!hash || !(k >= 0 && k < 46) || got[k]) { return; }
+    for (j = 0; j < 14; j++) { h = (h * 31 + rx[j]) % 16777213; }
+    if (h !== rx[14]) { return; }
+    for (j = 0; j < 14; j++) {
+      w = (k * 14 + j) * 3;
+      GB[w] = Math.floor(rx[j] / 65536);
+      GB[w + 1] = Math.floor(rx[j] / 256) % 256;
+      GB[w + 2] = rx[j] % 256;
+    }
+    got[k] = 1;
+    nGot++;
+    if (got[0]) {
+      v = wd(0);
+      nR = v % 128;
+      nB = Math.floor(v / 128) % 64;
+      nF = Math.floor(v / 8192);
+      oR = 2 + Math.ceil(nB / 3);
+      oF = oR + nR;
+      oP = oF + nF;
+      K = Math.ceil((oP + wd(1)) / 14);
+      // ready 1: every chunk up to the end of the route is in; ready 2: all chunks are in.
+      for (j = 0, ready = 2; j < K && ready; j++) {
+        if (!got[j]) { ready = j * 14 < oF ? 0 : 1; }
+      }
+    }
+    paint();
+  };
+  // Read chain: stores output d(gj) and reads the next; after d14 the request is done and the next chunk is asked for. A
+  // chain left behind by a newer request (a new stream id, the watchdog) stops there.
+  var nx = function (v) {
+    if (gs !== pend) { return; }
+    rv(gj, v);
+    if (++gj < 15) {
+      try { $.get(base + 'd' + gj, nx); } catch (e) {}
+    } else {
+      pend = 0;
+      pull();
+    }
+  };
+  // Asks for the first chunk not held yet (chunk 0 first, so the route comes before the features), while active, with a
+  // stream id, nothing pending and the topo not complete.
+  var pull = function () {
+    var j;
+    if (!act || !hash || pend || ready > 1) { return; }
+    for (j = 0; j < 45 && got[j]; j++) {}
+    want = j;
+    seq = seq % 999 + 1;
+    pend = seq;
+    send(4000000 + seq * 64 + j);
+    if (!armed) {
+      armed = 1;
+      setTimeout(watch, 2500);
+    }
+  };
+  // Watchdog, one timer at a time: a request pending at a check reads ck directly (in case its subscription was refused or
+  // missed the change); one still pending at the next check, 2.5 s later, is sent again with a new sequence number.
+  var watch = function () {
+    armed = 0;
+    if (act && pend) {
+      if (pend === seen) {
+        pend = 0;
+        pull();
+      } else {
+        seen = pend;
+        armed = 1;
+        setTimeout(watch, 2500);
+        try { $.get(base + 'ck', cb[0]); } catch (e) {}
+      }
+    }
+  };
+  // Callback of output i: rv bound to i. A bound function has no scope record or prototype of its own, which a closure per
+  // output does (about 120 B each); the closure is the fallback for a firmware without Function.prototype.bind (H1).
+  var callback = function (i) {
+    return rv.bind ? rv.bind(null, i) : function (v) { rv(i, v); };
+  };
+  // (Re)subscribes ck, mh and ms (tok and cb 0-2), releasing what an activation without onDeactivate left subscribed (the
+  // callbacks are made once and kept). A subscription the watch refuses throws; it is skipped, so the rest still runs.
+  // Then tells main.js it was activated (3000000, so it rewrites its text), paints, reads the stream id and the drawing
+  // state directly (subscriptions may not deliver the current value) and pulls what is missing. Survival across laps is
+  // hardware item H8.
+  var activate = function () {
+    var i;
+    lastKey = -1;
+    act = 1;
+    pend = 0;
+    for (i = 2; i >= 0; i--) {
+      if (tok[i]) {
+        try { $.unsubscribe(tok[i]); } catch (e) {}
+      }
+      try {
+        tok[i] = $.subscribe(base + (i ? (i > 1 ? 'ms' : 'mh') : 'ck'), cb[i] || (cb[i] = callback(15 + i)));
+      } catch (e) {
+        tok[i] = 0;
+      }
+    }
+    send(3000000);
+    paint();
+    try { $.get(base + 'mh', cb[1]); } catch (e) {}
+    try { $.get(base + 'ms', cb[2]); } catch (e) {}
+    pull();
+  };
+  // Every function gets an automatic prototype object (about 50 B); none of these helpers is a constructor. The
+  // renderer's own helpers drop theirs inside its scope.
+  wd.prototype = stance.prototype = fitRange.prototype = drawTile.prototype = send.prototype = unitsMode.prototype = null;
+  stagger.prototype = paint.prototype = rv.prototype = callback.prototype = activate.prototype = null;
+  nx.prototype = pull.prototype = watch.prototype = null;
+"
+onActivate="
+  base = 'Zapp/{zapp_index}/Output/';
+  evp = '/Zapp/{zapp_index}/Event';
+  $.get('/Settings/Unit/UnitsMode', unitsMode);
+  activate();
+"
+onDeactivate="
+  tile = 3;
+  run = 0;
+  act = 0;
+  pend = 0;
+  for (var i = 0; i < 3; i++) { if (tok[i]) { try { $.unsubscribe(tok[i]); } catch (e) {} } tok[i] = 0; }
+">
+  <div id="bg" style="width:100%;height:100%;background-color:#000000;">
+    <object id="c0" type="canvas" build="ctx => drawTile(ctx, 0)" style="position:absolute;top:16%;width:100%;height:23%;" />
+    <object id="c1" type="canvas" build="ctx => drawTile(ctx, 1)" style="position:absolute;top:39%;width:100%;height:23%;" />
+    <object id="c2" type="canvas" build="ctx => drawTile(ctx, 2)" style="position:absolute;top:62%;width:100%;height:17%;" />
+    <div id="tn" class="sp-b-cjk p-hc" style="top:5%;">-</div>
+    <div id="h1" class="sp-b-cjk p-hc" style="top:80%;">-</div>
+    <div id="h2" class="sp-t-s p-hc" style="top:90%;">-</div>
+    <div id="it" class="sp-b-cjk p-hc" style="top:16%;visibility:hidden;">-</div>
+    <div id="l0" class="sp-b-cjk p-hc" style="top:26%;visibility:hidden;">-</div>
+    <div id="l1" class="sp-b-cjk p-hc" style="top:35%;visibility:hidden;">-</div>
+    <div id="l2" class="sp-b-cjk p-hc" style="top:44%;visibility:hidden;">-</div>
+    <div id="l3" class="sp-b-cjk p-hc" style="top:53%;visibility:hidden;">-</div>
+    <div id="l4" class="sp-b-cjk p-hc" style="top:62%;visibility:hidden;">-</div>
+    <div id="l5" class="sp-b-cjk p-hc" style="top:71%;visibility:hidden;">-</div>
+    <div id="ld" class="sp-t-s p-hc" style="top:74%;visibility:hidden;">-</div>
+  </div>
+  <userInput>
+    <pushButton name="up" longType="action" onLongPressStart="send(1);" />
+    <pushButton name="down" longType="action" onLongPressStart="send(2);" />
+    <pushButton name="next" longType="action" onLongPressStart="send(3);" />
+  </userInput>
+</uiView>

@@ -1,0 +1,53 @@
+<uiView>
+  <div id="suuntoplus">
+    <div class="cm-fg" style="width:100%;height:25%">
+      <div class="sp-t-m p-hc" style="top:calc(60% - 50%e)">
+        BUTTONS
+      </div>
+    </div>
+
+    <!-- Top button hint image -->
+    <:if test="{{ IS_NG3 }}">
+      <!-- New watches -->
+      <div class="btn btn-top">
+        <img class="cm-bgc icon" src="hint-btn-top.png" />
+      </div>
+    </:if>
+    <:else>
+      <!-- Old watches -->
+      <img class="btn-topMask" src="a-sel-u.png" />
+    </:else>
+
+    <div class="cm-mid sp-vertical-center p-hc" style="top:35%">
+      <span class="sp-t-m" style="padding-right:5px;">Top:</span>
+      <span class="f-num sp-d-xs"><eval input="Zapp/{zapp_index}/Output/topCount"
+        outputFormat="Count_Threedigits" /></span>
+    </div>
+
+    <div class="cm-mid sp-vertical-center p-hc" style="top:60%">
+      <span class="sp-t-m" style="padding-right:5px;">Bottom:</span>
+      <span class="f-num sp-d-xs"><eval input="Zapp/{zapp_index}/Output/bottomCount"
+        outputFormat="Count_Threedigits" /></span>
+    </div>
+
+    <!-- Bottom button hint image -->
+    <:if test="{{ IS_NG3 }}">
+      <!-- New watches -->
+      <div class="btn btn-btm">
+        <img class="cm-bgc icon" src="hint-btn-bottom.png" />
+      </div>
+    </:if>
+    <:else>
+      <!-- Old watches -->
+      <img class="btn-btmMask" src="a-sel-d.png" />
+    </:else>
+
+    <!-- Button handlers trigger onEvent callback in main.js -->
+    <userInput>
+      <pushButton name="up" onClick="$.put('/Zapp/{zapp_index}/Event', 1, null, 'int32');"
+        onLongPressStart="$.put('/Zapp/{zapp_index}/Event', 2, null, 'int32');" />
+      <pushButton name="down" onClick="$.put('/Zapp/{zapp_index}/Event', 3, null, 'int32');"
+        onLongPressStart="$.put('/Zapp/{zapp_index}/Event', 4, null, 'int32');" />
+    </userInput>
+  </div>
+</uiView>

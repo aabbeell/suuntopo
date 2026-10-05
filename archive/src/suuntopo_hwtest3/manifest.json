@@ -1,0 +1,17 @@
+{
+  "name": "HW TEST 3",
+  "version": "0.1",
+  "author": "O. Vitya",
+  "description": "Test multi-subscribe + selector + localStorage",
+  "type": "feature",
+  "usage": "workout",
+  "modificationTime": 1710432000,
+  "template": [{ "name": "t.html" }],
+  "out": [
+    { "name": "appMode" },
+    { "name": "anchorIdx" },
+    { "name": "topoIdx" },
+    { "name": "selectorIdx" },
+    { "name": "zoomLvl" }
+  ]
+}

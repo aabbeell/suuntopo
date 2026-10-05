@@ -1,0 +1,39 @@
+{
+  "name": "Suuntopo",
+  "version": "1.0",
+  "author": "O. Vitya",
+  "description": "Multi-pitch topo",
+  "type": "feature",
+  "usage": "workout",
+  "modificationTime": 1791106094,
+  "languages": ["en"],
+  "template": [
+    { "name": "t.html", "displays": ["n", "o", "q"] },
+    { "name": "u.html", "displays": ["s", "m", "l"] }
+  ],
+  "settings": [
+    { "shownName": "Topo line from editor", "path": "topo0", "type": "string", "maxLength": 1500 },
+    { "shownName": "Lap moves to next pitch", "path": "lapAdv", "type": "enum", "values": ["Off", "On"] }
+  ],
+  "out": [
+    { "name": "ms" },
+    { "name": "mh" },
+    { "name": "ck" },
+    { "name": "d0" },
+    { "name": "d1" },
+    { "name": "d2" },
+    { "name": "d3" },
+    { "name": "d4" },
+    { "name": "d5" },
+    { "name": "d6" },
+    { "name": "d7" },
+    { "name": "d8" },
+    { "name": "d9" },
+    { "name": "d10" },
+    { "name": "d11" },
+    { "name": "d12" },
+    { "name": "d13" },
+    { "name": "d14" },
+    { "name": "pitch", "log": true, "shownName": "Pitch", "format": "Count_Twodigits" }
+  ]
+}

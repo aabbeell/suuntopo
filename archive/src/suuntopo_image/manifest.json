@@ -1,0 +1,21 @@
+{
+  "name": "suuntopo_img",
+  "version": "0.2",
+  "author": "O. Vitya",
+  "description": "Climbing topo viewer (image) with selector",
+  "type": "feature",
+  "usage": "workout",
+  "modificationTime": 1710432000,
+  "template": [{ "name": "t.html" }],
+  "image": [
+    { "name": "topo1.png", "type": "c64" },
+    { "name": "topo2.png", "type": "c64" }
+  ],
+  "out": [
+    { "name": "appMode" },
+    { "name": "anchorIdx" },
+    { "name": "topoIdx" },
+    { "name": "selectorIdx" },
+    { "name": "viewMode" }
+  ]
+}

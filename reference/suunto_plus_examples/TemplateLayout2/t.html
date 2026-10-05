@@ -1,0 +1,31 @@
+<!-- SuuntoPlus: Template with 2 fields and logo image -->
+<uiView>
+  <div id="suuntoplus">
+    <!-- Logo / title and its background -->
+    <div class="cm-fg" style="width:100%;height:27%">
+<:if test="{APP_IS_DISPLAY_LARGE}">
+      <img class="p-hc c-red" src="logo-l.png" style="top:calc(57% - 50%e)" />
+</:if>
+<:else>
+      <!-- Note: Medium displays use small logo image -->
+      <img class="p-hc c-red" src="logo-s.png" style="top:calc(57% - 50%e)" />
+</:else>
+    </div>
+
+    <!-- center -->
+    <div class="sp-t-s p-hc" style="top:calc(35% - 50%e)">
+      {zapp_center_title}
+    </div>
+    <div class="sp-d-l f-num p-hc" style="top:calc(50% - 50%e)">
+      <eval input="{zapp_center_input}" outputFormat="{zapp_center_format}" default="--" />
+    </div>
+
+    <!-- bottom -->
+    <div class="sp-t-s p-hc" style="top:calc(67% - 50%e)">
+      {zapp_bottom_title}
+    </div>
+    <div class="sp-d-l f-num p-hc" style="top:calc(82% - 50%e)">
+      <eval input="{zapp_bottom_input}" outputFormat="{zapp_bottom_format}" default="--" />
+    </div>
+  </div>
+</uiView>

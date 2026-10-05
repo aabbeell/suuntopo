@@ -1,0 +1,114 @@
+<!doctype html>
+<!-- ABOUTME: Source of the Suuntopo store banner at the console's required 600x300 px, rendered to banner-600.png with headless Chrome. -->
+<!-- ABOUTME: A granite wall at dusk with the app's route drawn on it, belays and grades; the store may overlay the watch in the centre, so text stays left. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Suuntopo banner 600</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #05070C; }
+  body { width: 600px; height: 300px; overflow: hidden; position: relative;
+    font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif; color: #FFFFFF; }
+  svg { position: absolute; left: 0; top: 0; }
+  .copy { position: absolute; left: 26px; top: 30px; width: 190px; }
+  h1 { margin: 0; font-size: 36px; font-weight: 800; letter-spacing: -0.8px; line-height: 1;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.7); }
+  .bar { width: 38px; height: 4px; background: #FFD400; border-radius: 2px; margin: 11px 0 9px; }
+  .tag { margin: 0; font-size: 13.5px; line-height: 1.32; font-weight: 600; color: #E6E9EF;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
+  .chips { margin-top: 12px; display: flex; gap: 5px; flex-wrap: wrap; }
+  .chip { font-size: 10px; font-weight: 700; letter-spacing: 0.3px; color: #0B0E14; background: #FFD400;
+    border-radius: 9px; padding: 2px 7px; }
+  .chip.alt { background: rgba(255,255,255,0.14); color: #E6E9EF; border: 1px solid rgba(255,255,255,0.25); }
+</style>
+</head>
+<body>
+<svg width="600" height="300" viewBox="0 0 600 300" aria-hidden="true">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0E1A33"/>
+      <stop offset="0.55" stop-color="#2B2A4A"/>
+      <stop offset="0.85" stop-color="#7A3E3A"/>
+      <stop offset="1" stop-color="#C46A3C"/>
+    </linearGradient>
+    <linearGradient id="rock" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3A3F4B"/>
+      <stop offset="0.6" stop-color="#22262F"/>
+      <stop offset="1" stop-color="#14171D"/>
+    </linearGradient>
+    <linearGradient id="far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3B3456"/>
+      <stop offset="1" stop-color="#1D1B2E"/>
+    </linearGradient>
+    <linearGradient id="fadeL" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#05070C" stop-opacity="0.85"/>
+      <stop offset="0.45" stop-color="#05070C" stop-opacity="0.35"/>
+      <stop offset="0.6" stop-color="#05070C" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFD400" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FFD400" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="600" height="300" fill="url(#sky)"/>
+  <!-- stars -->
+  <g fill="#FFFFFF">
+    <circle cx="300" cy="22" r="0.9" opacity="0.8"/><circle cx="352" cy="40" r="0.7" opacity="0.6"/>
+    <circle cx="410" cy="16" r="1" opacity="0.9"/><circle cx="268" cy="58" r="0.6" opacity="0.5"/>
+    <circle cx="232" cy="18" r="0.8" opacity="0.7"/><circle cx="560" cy="30" r="0.7" opacity="0.6"/>
+    <circle cx="590" cy="64" r="0.6" opacity="0.5"/><circle cx="330" cy="80" r="0.5" opacity="0.4"/>
+  </g>
+  <!-- distant ridge -->
+  <path d="M0,215 L60,180 L105,198 L170,150 L225,182 L262,168 L300,190 L340,176 L380,200 L600,170 L600,300 L0,300 Z" fill="url(#far)" opacity="0.9"/>
+
+  <!-- the big wall -->
+  <path d="M330,300 L352,230 L362,175 L380,128 L398,92 L420,58 L446,34 L470,26 L494,38 L512,62 L530,98 L548,140 L566,190 L584,240 L600,262 L600,300 Z" fill="url(#rock)"/>
+  <!-- rock texture: cracks, ledges -->
+  <g stroke="#58606F" stroke-width="1" fill="none" opacity="0.55" stroke-linecap="round">
+    <path d="M430,70 L436,110 L432,150 L440,200"/>
+    <path d="M512,80 L506,120 L515,165"/>
+    <path d="M395,140 L420,138 M462,96 L490,93 M478,182 L512,178 M405,226 L436,222 M520,226 L556,230"/>
+    <path d="M548,150 L540,190 L548,240" opacity="0.7"/>
+  </g>
+  <!-- summit snow -->
+  <path d="M446,34 L470,26 L494,38 L484,40 L472,34 L460,42 Z" fill="#D9DEE8" opacity="0.8"/>
+
+  <!-- the route: climbed, current pitch, upcoming, walk-off -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="452,300 458,268 450,240" stroke="#B05A48" stroke-width="3.5"/>
+    <polyline points="450,240 466,212 460,186" stroke="#B05A48" stroke-width="3.5"/>
+    <polyline points="460,186 474,160 468,132" stroke="#FFD400" stroke-width="5"/>
+    <polyline points="468,132 482,104 474,78" stroke="#FF5A36" stroke-width="3.5" stroke-dasharray="1 0"/>
+    <polyline points="474,78 470,50 470,30" stroke="#FF5A36" stroke-width="3.5"/>
+    <polyline points="470,30 500,22 545,30 590,48" stroke="#5AC8FA" stroke-width="2.5" stroke-dasharray="5 4"/>
+  </g>
+  <!-- glow on the current pitch -->
+  <circle cx="466" cy="160" r="34" fill="url(#glow)"/>
+  <!-- belays -->
+  <g stroke="#05070C" stroke-width="1.5">
+    <circle cx="450" cy="240" r="4" fill="#FFFFFF"/>
+    <circle cx="460" cy="186" r="4" fill="#FFFFFF"/>
+    <circle cx="468" cy="132" r="5" fill="#FFD400"/>
+    <circle cx="474" cy="78" r="4" fill="#FFFFFF"/>
+    <circle cx="470" cy="30" r="4" fill="#FFFFFF"/>
+  </g>
+  <!-- pitch grades -->
+  <g font-family="-apple-system, Helvetica Neue, Arial, sans-serif" font-size="10" font-weight="700">
+    <text x="420" y="217" fill="#D9C2BC">5b</text>
+    <text x="484" y="164" fill="#FFD400" font-size="12">6a · 35 m</text>
+    <text x="492" y="108" fill="#FFB4A2">5c</text>
+    <text x="442" y="58" fill="#FFB4A2">4c</text>
+  </g>
+
+  <!-- left fade so the title reads -->
+  <rect width="600" height="300" fill="url(#fadeL)"/>
+</svg>
+<div class="copy">
+  <h1>Suuntopo</h1>
+  <div class="bar"></div>
+  <p class="tag">Your multi-pitch route on the watch, belay by belay.</p>
+  <div class="chips"><span class="chip">Pitch by pitch</span><span class="chip alt">Free topo editor</span></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,255 @@
+<uiView onLoad="
+  var topos = [
+    {
+      name: 'Salathe',
+      grade: 'V',
+      pitches: 3,
+      anchors: [
+        { x: 75, y: 1217, grade: 'IV', length: '33m', info: 'First pitch' },
+        { x: 157, y: 971, grade: 'V', length: '21m', info: 'Second pitch' },
+        { x: 215, y: 620, grade: 'II', length: '41m', info: 'Third pitch' }
+      ],
+      route: [[75,1217],[177,1086],[157,971],[207,865],[281,768],[267,648],[215,620]],
+      features: [
+        { type: 'crack', x: 251, y: 723, w: 9, h: 120 },
+        { type: 'overhang', x: 188, y: 621, w: 115, h: 9 },
+        { type: 'ledge', x: 107, y: 781, w: 128, h: 6 },
+        { type: 'tree', x: 102, y: 1196 },
+        { type: 'tree', x: 128, y: 1215 },
+        { type: 'cross', x: 113, y: 985 },
+        { type: 'rappel', x: 177, y: 807 }
+      ]
+    }
+  ];
+  var mode = 0;
+  var selIdx = 0;
+  var curTopo = 0;
+  var cur = 0;
+  var Z = 1.2;
+  var fx = 0;
+  var fy = 0;
+  var cx = 233;
+  var cy = 233;
+  var sx = function(x) { return (x - fx) * Z + cx; };
+  var sy = function(y) { return (y - fy) * Z + cy; };
+  var ss = function(v) { return v * Z; };
+
+  var rectToLine = function(f) {
+    if (f.w >= f.h) {
+      var my = f.y + f.h / 2;
+      return [[f.x, my], [f.x + f.w, my]];
+    } else {
+      var mx = f.x + f.w / 2;
+      return [[mx, f.y], [mx, f.y + f.h]];
+    }
+  };
+
+  var drawFeature = function(ctx, f) {
+    var pts = f.points;
+    if (!pts && f.w !== undefined && f.h !== undefined) {
+      pts = rectToLine(f);
+    }
+    var i, dx, dy, len, nx, ny;
+    if (f.type === 'crack' && pts && pts.length > 1) {
+      ctx.strokeStyle = '#777777';
+      ctx.lineWidth = ss(2);
+      var tickLen = ss(6);
+      for (i = 0; i < pts.length - 1; i++) {
+        dx = pts[i+1][0]-pts[i][0]; dy = pts[i+1][1]-pts[i][1];
+        len = Math.sqrt(dx*dx+dy*dy); if(len<1){continue;}
+        nx = -dy/len; ny = dx/len;
+        var steps = Math.floor(len/10);
+        for (var s = 0; s <= steps; s++) {
+          var t = steps>0 ? s/steps : 0.5;
+          var px = pts[i][0]+dx*t; var py = pts[i][1]+dy*t;
+          ctx.beginPath();
+          ctx.moveTo(sx(px)+nx*tickLen, sy(py)+ny*tickLen);
+          ctx.lineTo(sx(px)-nx*tickLen, sy(py)-ny*tickLen);
+          ctx.stroke();
+        }
+      }
+    } else if (f.type === 'overhang' && pts && pts.length > 1) {
+      ctx.strokeStyle = '#888888'; ctx.lineWidth = ss(2);
+      ctx.beginPath(); ctx.moveTo(sx(pts[0][0]),sy(pts[0][1]));
+      for(i=1;i<pts.length;i++){ctx.lineTo(sx(pts[i][0]),sy(pts[i][1]));}
+      ctx.stroke();
+    } else if (f.type === 'ledge' && pts && pts.length > 1) {
+      ctx.strokeStyle = '#777777'; ctx.lineWidth = ss(3);
+      ctx.beginPath(); ctx.moveTo(sx(pts[0][0]),sy(pts[0][1]));
+      for(i=1;i<pts.length;i++){ctx.lineTo(sx(pts[i][0]),sy(pts[i][1]));}
+      ctx.stroke();
+    } else if (f.type === 'slab' && f.w !== undefined) {
+      ctx.strokeStyle = '#555555'; ctx.lineWidth = ss(1.5);
+      ctx.strokeRect(sx(f.x), sy(f.y), ss(f.w), ss(f.h));
+    } else if (f.type === 'tree') {
+      ctx.strokeStyle = '#777777'; ctx.lineWidth = ss(2);
+      ctx.beginPath(); ctx.moveTo(sx(f.x),sy(f.y)); ctx.lineTo(sx(f.x),sy(f.y)-ss(14)); ctx.stroke();
+      ctx.fillStyle = '#335533';
+      ctx.beginPath(); ctx.arc(sx(f.x),sy(f.y)-ss(20),ss(5),0,Math.PI*2); ctx.fill();
+    } else if (f.type === 'cross') {
+      var arm = ss(5);
+      ctx.strokeStyle = '#555555'; ctx.lineWidth = ss(1.5);
+      ctx.beginPath(); ctx.moveTo(sx(f.x)-arm,sy(f.y)-arm); ctx.lineTo(sx(f.x)+arm,sy(f.y)+arm); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sx(f.x)+arm,sy(f.y)-arm); ctx.lineTo(sx(f.x)-arm,sy(f.y)+arm); ctx.stroke();
+    } else if (f.type === 'rappel') {
+      ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = ss(2);
+      ctx.beginPath(); ctx.arc(sx(f.x),sy(f.y),ss(6),0,Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sx(f.x),sy(f.y)+ss(6)); ctx.lineTo(sx(f.x),sy(f.y)+ss(16)); ctx.stroke();
+    }
+  };
+
+  var drawSelector = function(ctx) {
+    var w = ctx.width || 466;
+    var h = ctx.height || 466;
+    ctx.fillStyle = '#1A1A1A';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#FFDD00';
+    ctx.font = '22px monospace';
+    var ttl = 'SUUNTOPO';
+    var ttlw = ctx.measureText(ttl).width;
+    ctx.fillText(ttl, (w - ttlw) / 2, 100);
+    var i;
+    for (i = 0; i < topos.length; i++) {
+      var isSel = (i === selIdx);
+      var y = 160 + i * 40;
+      if (isSel) {
+        ctx.fillStyle = '#FFDD00';
+        ctx.font = '16px monospace';
+        ctx.fillText('>', 100, y);
+      }
+      ctx.fillStyle = isSel ? '#FFDD00' : '#FFFFFF';
+      ctx.font = '16px monospace';
+      ctx.fillText(topos[i].name, 120, y);
+    }
+  };
+
+  var drawMap = function(ctx) {
+    var w = ctx.width || 466;
+    var h = ctx.height || 466;
+    cx = w / 2; cy = h / 2;
+    ctx.fillStyle = '#1A1A1A';
+    ctx.fillRect(0, 0, w, h);
+    var topo = topos[curTopo];
+    var a = topo.anchors[cur];
+    fx = a.x; fy = a.y;
+    var i;
+    for (i = 0; i < topo.features.length; i++) {
+      try { drawFeature(ctx, topo.features[i]); } catch(e) {}
+    }
+    if (topo.route.length > 1) {
+      ctx.strokeStyle = '#FF3333'; ctx.lineWidth = ss(4); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(sx(topo.route[0][0]),sy(topo.route[0][1]));
+      for (i=1;i<topo.route.length;i++) { ctx.lineTo(sx(topo.route[i][0]),sy(topo.route[i][1])); }
+      ctx.stroke();
+    }
+    for (i = 0; i < topo.anchors.length; i++) {
+      var anc = topo.anchors[i];
+      var isCur = (i === cur);
+      ctx.beginPath();
+      ctx.arc(sx(anc.x),sy(anc.y),isCur?ss(13):ss(8),0,Math.PI*2);
+      ctx.fillStyle = isCur ? '#FFDD00' : '#FFFFFF';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(sx(anc.x),sy(anc.y),isCur?ss(5):ss(3),0,Math.PI*2);
+      ctx.fillStyle = '#1A1A1A';
+      ctx.fill();
+    }
+    ctx.fillStyle = '#AAAAAA'; ctx.font = '11px monospace';
+    var nm = topo.name;
+    var nmw = ctx.measureText(nm).width;
+    ctx.fillText(nm, (w-nmw)/2, 28);
+    var hud = String(cur+1)+'/'+String(topo.anchors.length)+' '+(a.grade||'')+' '+(a.length||'');
+    ctx.fillStyle = '#FFFFFF'; ctx.font = '11px monospace';
+    var hw = ctx.measureText(hud).width;
+    ctx.fillText(hud, (w-hw)/2, h-60);
+  };
+
+  var drawInfo = function(ctx) {
+    var w = ctx.width || 466;
+    var h = ctx.height || 466;
+    ctx.fillStyle = '#1A1A1A';
+    ctx.fillRect(0, 0, w, h);
+    var topo = topos[curTopo];
+    var a = topo.anchors[cur];
+    var tw;
+    ctx.fillStyle = '#AAAAAA'; ctx.font = '11px monospace';
+    var pos = String(cur+1)+'/'+String(topo.anchors.length);
+    tw = ctx.measureText(pos).width;
+    ctx.fillText(pos, (w-tw)/2, 50);
+    if (a.info) {
+      ctx.fillStyle = '#FFFFFF'; ctx.font = '14px monospace';
+      var words = a.info.split(' ');
+      var lines = [];
+      var line = '';
+      var maxW = w - 120;
+      var wi;
+      for (wi = 0; wi < words.length; wi++) {
+        var test = line ? (line + ' ' + words[wi]) : words[wi];
+        if (ctx.measureText(test).width > maxW && line) {
+          lines.push(line);
+          line = words[wi];
+        } else {
+          line = test;
+        }
+      }
+      if (line) { lines.push(line); }
+      var startY = (h - lines.length * 22) / 2;
+      var li;
+      for (li = 0; li < lines.length; li++) {
+        tw = ctx.measureText(lines[li]).width;
+        ctx.fillText(lines[li], (w-tw)/2, startY + li * 22);
+      }
+    }
+    var bot = '';
+    if (a.grade) { bot = a.grade; }
+    if (a.length) { bot = bot + (bot ? '  ' : '') + a.length; }
+    if (bot) {
+      ctx.fillStyle = '#FFDD00'; ctx.font = '13px monospace';
+      tw = ctx.measureText(bot).width;
+      ctx.fillText(bot, (w-tw)/2, h-55);
+    }
+  };
+
+  var drawScreen = function(ctx) {
+    if (mode === 0) { drawSelector(ctx); }
+    else if (mode === 2) { drawInfo(ctx); }
+    else { drawMap(ctx); }
+  };
+"
+onActivate="
+  $.subscribe('Zapp/{zapp_index}/Output/appMode', function(v) {
+    mode = Math.floor(v / 100);
+    control('#tc', 'REFRESH');
+  });
+  $.subscribe('Zapp/{zapp_index}/Output/selectorIdx', function(v) {
+    selIdx = v;
+    if (mode === 0) { control('#tc', 'REFRESH'); }
+  });
+  $.subscribe('Zapp/{zapp_index}/Output/topoIdx', function(v) {
+    curTopo = v;
+    control('#tc', 'REFRESH');
+  });
+  $.subscribe('Zapp/{zapp_index}/Output/anchorIdx', function(v) {
+    cur = v;
+    if (mode !== 0) { control('#tc', 'REFRESH'); }
+  });
+  $.subscribe('Zapp/{zapp_index}/Output/zoomLvl', function(v) {
+    Z = v / 10;
+    if (mode === 1) { control('#tc', 'REFRESH'); }
+  });
+"
+onDeactivate="">
+  <div style="width:100%; height:100%; background-color:#1A1A1A;">
+    <object id='tc' type='canvas' build='ctx => drawScreen(ctx)'
+      style='position:absolute; left:0; top:0; width:100%; height:100%;' />
+  </div>
+  <userInput>
+    <pushButton name='up'
+      onClick="$.put('/Zapp/{zapp_index}/Event', 1, null, 'int32');" />
+    <pushButton name='down'
+      onClick="$.put('/Zapp/{zapp_index}/Event', 3, null, 'int32');"
+      onLongPressStart="$.put('/Zapp/{zapp_index}/Event', 6, null, 'int32');" />
+    <pushButton name='next'
+      onClick="$.put('/Zapp/{zapp_index}/Event', 5, null, 'int32');" />
+  </userInput>
+</uiView>

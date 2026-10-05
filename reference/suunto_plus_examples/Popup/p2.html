@@ -1,0 +1,14 @@
+<!-- Second popup notification -->
+<uiView>
+  <div id="suuntoplus">
+    <userInput>
+      <pushButton name="up" type="lock" onClick="$.put('/Zapp/{zapp_index}/Event', 3, null, 'int32');" />
+    </userInput>
+
+    <:dialogTop
+      icon="icon-m-connected.png"
+      textBody="This is your notification"
+      btnTopText="Resume"
+      btnTopShapeClass="c-yellow" />
+  </div>
+</uiView>

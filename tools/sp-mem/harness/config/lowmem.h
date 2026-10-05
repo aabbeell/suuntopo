@@ -1,0 +1,89 @@
+// ABOUTME: Low-memory Duktape option overrides that build.sh splices into duk_config.h at its __OVERRIDE_DEFINES__ marker ("lowmem" variant).
+// ABOUTME: Follows Duktape's config/examples/low_memory.yaml plus the 16-bit field options; built-in objects and buffer objects stay as in the default build.
+
+/* --- From low_memory.yaml (options that do not change which built-ins exist) --- */
+#define DUK_USE_ALLOW_UNDEFINED_BEHAVIOR
+#define DUK_USE_PREFER_SIZE
+#define DUK_USE_EXEC_PREFER_SIZE
+#undef DUK_USE_FAST_REFCOUNT_DEFAULT
+#undef DUK_USE_AUGMENT_ERROR_CREATE
+#undef DUK_USE_AUGMENT_ERROR_THROW
+#undef DUK_USE_TRACEBACKS
+#undef DUK_USE_ERRCREATE
+#undef DUK_USE_ERRTHROW
+#undef DUK_USE_VERBOSE_ERRORS
+#define DUK_USE_PARANOID_ERRORS
+#undef DUK_USE_FATAL_MAXLEN
+#define DUK_USE_FATAL_MAXLEN 64
+#undef DUK_USE_VERBOSE_EXECUTOR_ERRORS
+#undef DUK_USE_DEBUGGER_SUPPORT
+#undef DUK_USE_PC2LINE
+#undef DUK_USE_LEXER_SLIDING_WINDOW
+#undef DUK_USE_JSON_STRINGIFY_FASTPATH
+#undef DUK_USE_JSON_QUOTESTRING_FASTPATH
+#undef DUK_USE_JSON_DECSTRING_FASTPATH
+#undef DUK_USE_JSON_DECNUMBER_FASTPATH
+#undef DUK_USE_JSON_EATWHITE_FASTPATH
+#undef DUK_USE_BASE64_FASTPATH
+#undef DUK_USE_HEX_FASTPATH
+#undef DUK_USE_IDCHAR_FASTPATH
+#undef DUK_USE_ARRAY_PROP_FASTPATH
+#undef DUK_USE_ARRAY_FASTPATH
+#undef DUK_USE_BYTECODE_DUMP_SUPPORT
+#undef DUK_USE_JX
+#undef DUK_USE_JC
+#undef DUK_USE_DEBUG_BUFSIZE
+#define DUK_USE_DEBUG_BUFSIZE 2048
+#define DUK_USE_LIGHTFUNC_BUILTINS
+
+/* Grow and shrink the value stack without slack. */
+#undef DUK_USE_VALSTACK_GROW_SHIFT
+#undef DUK_USE_VALSTACK_SHRINK_CHECK_SHIFT
+#undef DUK_USE_VALSTACK_SHRINK_SLACK_SHIFT
+
+/* Fixed-size string table, no literal cache. */
+#undef DUK_USE_STRTAB_MINSIZE
+#define DUK_USE_STRTAB_MINSIZE 128
+#undef DUK_USE_STRTAB_MAXSIZE
+#define DUK_USE_STRTAB_MAXSIZE 128
+#undef DUK_USE_STRTAB_SHRINK_LIMIT
+#define DUK_USE_STRTAB_SHRINK_LIMIT 0
+#undef DUK_USE_STRTAB_GROW_LIMIT
+#define DUK_USE_STRTAB_GROW_LIMIT 65536
+#undef DUK_USE_STRTAB_RESIZE_CHECK_MASK
+#define DUK_USE_STRTAB_RESIZE_CHECK_MASK 255
+#undef DUK_USE_LITCACHE_SIZE
+
+#undef DUK_USE_HSTRING_ARRIDX
+#undef DUK_USE_HOBJECT_HASH_PROP_LIMIT
+#define DUK_USE_HOBJECT_HASH_PROP_LIMIT 64
+#undef DUK_USE_HOBJECT_ARRAY_ABANDON_MINSIZE
+#define DUK_USE_HOBJECT_ARRAY_ABANDON_MINSIZE 32
+#undef DUK_USE_CACHE_ACTIVATION
+#undef DUK_USE_CACHE_CATCHER
+
+#define DUK_USE_VALSTACK_UNSAFE
+#undef DUK_USE_REGEXP_CANON_WORKAROUND
+#undef DUK_USE_REGEXP_CANON_BITMAP
+
+/* Function footprint. */
+#define DUK_USE_FUNC_NAME_PROPERTY
+#undef DUK_USE_FUNC_FILENAME_PROPERTY
+
+/* Source-level features that do not add or remove built-in objects. */
+#undef DUK_USE_SOURCE_NONBMP
+#undef DUK_USE_ES7_EXP_OPERATOR
+#undef DUK_USE_ES6_UNICODE_ESCAPE
+#undef DUK_USE_HTML_COMMENTS
+#undef DUK_USE_SHEBANG_COMMENTS
+
+/* --- 16-bit header fields (the "consider" block of low_memory.yaml) --- */
+#undef DUK_USE_REFCOUNT32
+#define DUK_USE_REFCOUNT16
+#define DUK_USE_STRHASH16
+#define DUK_USE_STRLEN16
+#define DUK_USE_BUFLEN16
+#define DUK_USE_OBJSIZES16
+/* No stored char length: computed on demand (Duktape requires LAZY_CLEN when CLEN is off). */
+#undef DUK_USE_HSTRING_CLEN
+#define DUK_USE_HSTRING_LAZY_CLEN
