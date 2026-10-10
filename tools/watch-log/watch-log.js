@@ -36,7 +36,7 @@ ws.on('open', async () => {
       const devs = await send({ Method: 'GET', Uri: 'suunto://SDS/ConnectedDevices' });
       const list = (devs.Body && devs.Body.Devices) || [];
       if (!list.length) throw new Error('no watch connected');
-      s = list[0].Serial;
+      s = typeof list[0] === "string" ? list[0] : list[0].Serial;
     }
     const res = await send({ Method: 'GET', Uri: 'suunto://SDS/SystemEvents/' + s });
     const text = res.Body && res.Body.Content;

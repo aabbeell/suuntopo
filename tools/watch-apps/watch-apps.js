@@ -29,7 +29,7 @@ ws.on('open', async () => {
       const devs = await send({ Method: 'GET', Uri: 'suunto://SDS/ConnectedDevices' });
       const list = (devs.Body && (devs.Body.Devices || devs.Body)) || [];
       if (!Array.isArray(list) || !list.length) throw new Error('no connected watch: ' + JSON.stringify(devs.Body));
-      serial = list[0].Serial;
+      serial = typeof list[0] === "string" ? list[0] : list[0].Serial;
     }
     const res = await send({ Method: 'GET', Uri: 'suunto://' + serial + '/Plugin/List' });
     console.log(JSON.stringify(res.Body, null, 1));
